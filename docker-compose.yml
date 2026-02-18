@@ -8,6 +8,7 @@ services:
      - "17" #getent group audio | cut -d: -f3
     # 1. Privileged is the safest bet for hardware access
     # privileged: true
+    env_file: "./.env"
     
     # 2. Map the hardware only
     devices:
