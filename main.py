@@ -47,6 +47,7 @@ def play_audio_from_b64(b64_string):
             channels=audio_segment.channels,
             rate=audio_segment.frame_rate,
             output=True,
+            output_device_index=settings.speaker_index,
         )
 
         logger.debug(f"Playing audio ({audio_segment.duration_seconds}s)...")

@@ -20,6 +20,10 @@ class SatelliteSettings(BaseSettings):
         default=None,
         description="The index of the microphone device (use verify_audio.py to find this)",
     )
+    speaker_index: Optional[int] = Field(
+        default=None,
+        description="The index of the output device (use verify_audio.py to find this)",
+    )
     wakeword_threshold: float = Field(
         default=0.6,
         description="Sensitivity (0.0-1.0). Higher = fewer false positives, harder to trigger.",
@@ -65,6 +69,7 @@ def get_settings() -> SatelliteSettings:
     parser.add_argument("--api-token", help="API Token for Orchestrator")
 
     parser.add_argument("--mic-index", type=int, help="Microphone Device Index")
+    parser.add_argument("--speaker-index", help="Index of output device")
     parser.add_argument(
         "--wakeword-threshold", type=float, help="Wakeword sensitivity (0.0-1.0)"
     )
