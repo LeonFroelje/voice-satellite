@@ -196,14 +196,17 @@ def main():
 
                 # 4. Handle Result
                 if full_text.strip():
+                    client.client.close_websocket()
+                    client.finalize_recording(0)
+                    client.client.audio_bytes
                     logger.info(f"Transcribed: {full_text}")
                     send_to_orchestrator(full_text)
                 else:
                     logger.info("No speech detected.")
 
-                client.client.close_websocket()
-                client.finalize_recording(0)
-                client.client.audio_bytes
+                # client.client.close_websocket()
+                # client.finalize_recording(0)
+                # client.client.audio_bytes
                 # 5. RE-OPEN MIC WITH DELAY
                 # Give the transcription client 1 second to fully release the hardware
                 time.sleep(1.0)
