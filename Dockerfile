@@ -48,10 +48,12 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 # 4. Copy application code
 COPY --chown=appuser:appuser . .
-
+RUN chown appuser:appuser /app
+RUN chmod 750 /app
 # 5. The Critical Fix: Explicit Command
 # instead of relying on ENV PATH, we point directly to the python binary
 # that contains your libraries.
 USER appuser
+
 # USER root
 CMD ["/opt/venv/bin/python", "main.py"]
