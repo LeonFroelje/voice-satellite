@@ -31,6 +31,10 @@ class SatelliteSettings(BaseSettings):
     wakeword_models: str = Field(
         default="alexa", description="Comma-separated list of wakeword models to load"
     )
+    output_delay: Optional[int] = Field(
+        default = 1,
+        description="The delay for TTS audio output stream in seconds"
+    )
 
     # --- Context ---
     room: Optional[str] = Field(
@@ -79,6 +83,7 @@ def get_settings() -> SatelliteSettings:
     parser.add_argument("--language", help="Language code (en, de, etc.)")
     parser.add_argument("--room", help="Room name (e.g., kitchen, bedroom)")
     parser.add_argument("--log-level", help="Logging Level (DEBUG, INFO)")
+    parser.add_argument("--output-delay", help="Output delay in seconds")
 
     args, unknown = parser.parse_known_args()
     print(args)
