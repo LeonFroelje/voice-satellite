@@ -51,9 +51,7 @@ def play_audio_from_b64(b64_string):
         logger.debug(f"Playing audio ({audio_segment.duration_seconds}s)...")
 
         # Wake up silence
-        silence_len = int(
-            audio_segment.frame_rate * audio_segment.channels * 0.2
-        )  # 0.2s
+        silence_len = int(audio_segment.frame_rate * audio_segment.channels * 1)  # 0.2s
         silence = b"\x00" * silence_len
 
         speaker_stream.write(silence)
