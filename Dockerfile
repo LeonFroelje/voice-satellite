@@ -22,6 +22,8 @@ COPY requirements.txt .
 RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel && \
     /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
+COPY download_models.py .
+RUN /opt/venv/bin/python download_models.py
 
 # ==========================================
 # Stage 2: Runtime
