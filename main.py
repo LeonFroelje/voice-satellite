@@ -27,50 +27,42 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 CHUNK = 1280
+speaker_stream = None
+audio_manager = pyaudio.PyAudio()
 
 
 def play_audio_from_b64(b64_string):
+    global speaker_stream
     try:
-        # 1. Decode Base64 string to binary bytes
         audio_data = base64.b64decode(b64_string)
-
-        # 2. Load into Pydub (handles wav/mp3/ogg automatically)
-        #    This is crucial because it parses the header to get sample rate/channels
         audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
 
-        # 3. Initialize PyAudio
-        p = pyaudio.PyAudio()
-
-        # 4. Open an Output Stream using the format from the audio segment
-        stream = p.open(
-            format=p.get_format_from_width(audio_segment.sample_width),
-            channels=audio_segment.channels,
-            rate=audio_segment.frame_rate,
-            output=True,
-            output_device_index=settings.speaker_index,
-        )
+        # Check if we need to (re)open the stream (if format changed or first run)
+        # Note: In a production satellite, your TTS usually sends a consistent format.
+        if speaker_stream is None:
+            speaker_stream = audio_manager.open(
+                format=audio_manager.get_format_from_width(audio_segment.sample_width),
+                channels=audio_segment.channels,
+                rate=audio_segment.frame_rate,
+                output=True,
+                output_device_index=settings.speaker_index,
+            )
 
         logger.debug(f"Playing audio ({audio_segment.duration_seconds}s)...")
 
-        silence = b"\x00" * (
-            audio_segment.frame_rate
-            * audio_segment.channels
-            * audio_segment.sample_width
-            // 2
-        )
-        # Generate 0.5 seconds of silence matching the audio format
-        # This forces the DAC/Amp to wake up before the real speech starts
-        stream.write(silence)
-        # 5. Write the raw audio data to the stream
-        stream.write(audio_segment.raw_data)
+        # Wake up silence
+        silence_len = int(
+            audio_segment.frame_rate * audio_segment.channels * 0.2
+        )  # 0.2s
+        silence = b"\x00" * silence_len
 
-        # 6. Cleanup
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
+        speaker_stream.write(silence)
+        speaker_stream.write(audio_segment.raw_data)
 
     except Exception as e:
         logger.error(f"Audio playback failed: {e}")
+        # If the stream crashed, reset it so the next call tries to recreate it
+        speaker_stream = None
 
 
 def send_to_orchestrator(text: str):
@@ -114,15 +106,15 @@ def main():
     download_models()
     owwModel = Model(wakeword_models=[settings.wakeword_models])
 
-    audio = pyaudio.PyAudio()
-    mic_stream = None  # Initialize to None for safety
+    global audio_manager
+    mic_stream = None
 
     # --- ROBUST OPEN FUNCTION ---
     def safe_open_stream(retries=3, delay=1.0):
         """Attempts to open the stream, retrying if the device is busy."""
         for attempt in range(retries):
             try:
-                stream = audio.open(
+                stream = audio_manager.open(
                     format=FORMAT,
                     channels=CHANNELS,
                     rate=RATE,
@@ -237,7 +229,7 @@ def main():
                 mic_stream.close()
             except Exception:
                 pass
-        audio.terminate()
+        audio_manager.terminate()
 
 
 if __name__ == "__main__":
