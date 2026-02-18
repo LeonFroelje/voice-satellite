@@ -50,7 +50,7 @@ class SatelliteSettings(BaseSettings):
     log_level: str = "INFO"
 
     # Pydantic Config: Tells it to read from .env files automatically
-    model_config = SettingsConfigDict(env_prefix="SAT")
+    model_config = SettingsConfigDict(env_prefix="SAT_")
 
 
 def get_settings() -> SatelliteSettings:
