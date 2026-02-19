@@ -103,7 +103,7 @@ def send_to_orchestrator(text: str):
 
 
 def main():
-    download_models()
+    # download_models()
     owwModel = Model(wakeword_models=[settings.wakeword_models])
 
     global audio_manager

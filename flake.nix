@@ -28,6 +28,20 @@
       python = pkgs.python3; # <-- To this (usually 3.12)
       # --- Custom Packages ---
 
+      models = {
+        alexa = pkgs.fetchurl {
+          url = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/alexa_v0.1.onnx";
+          hash = "sha256-b/VmoB0SZw6NnjxZ2jJlHbFXXRcnKmAbf4o5KD37rj4=";
+        };
+        embedding = pkgs.fetchurl {
+          url = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx";
+          hash = "sha256-cNFkKQwdCV0dTuFJvF4AVDJQpzFrWfMdBWz/e9MHXB8=";
+        };
+        melspectrogram = pkgs.fetchurl {
+          url = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx";
+          hash = "sha256-uisOD4t7h1NposicsTNg/1O6xDbyiVzO2fR5+mXrF28=";
+        };
+      };
       # OpenWakeWord is not in nixpkgs, so we package it here.
       # Note: We stripped tflite-runtime as discussed.
       openwakeword = python.pkgs.buildPythonPackage rec {
@@ -48,6 +62,21 @@
           fi
         '';
 
+        postInstall = ''
+          # Define the destination directory
+          TARGET_DIR="$out/${python.sitePackages}/openwakeword/resources/models"
+
+          echo "Installing models to: $TARGET_DIR"
+          mkdir -p "$TARGET_DIR"
+
+          # Copy models
+          cp ${models.embedding} "$TARGET_DIR/embedding_model.onnx"
+          cp ${models.melspectrogram} "$TARGET_DIR/melspectrogram.onnx"
+          cp ${models.alexa} "$TARGET_DIR/alexa_v0.1.onnx"
+
+          # List files to verify in build logs
+          ls -R "$out/${python.sitePackages}/openwakeword"
+        '';
         propagatedBuildInputs = with python.pkgs; [
           onnxruntime
           scipy
@@ -79,6 +108,7 @@
         python-dotenv
         certifi
         tqdm
+        websocket-client
       ];
 
     in
