@@ -133,6 +133,101 @@
           '';
         };
       };
+      nixosModules.default =
+        {
+          config,
+          lib,
+          pkgs,
+          ...
+        }:
+        let
+          cfg = config.services.voice-satellite;
+          defaultPkg = self.packages.${pkgs.system}.default;
+        in
+        {
+          options.services.voice-satellite = with lib; {
+            enable = lib.mkEnableOption "Voice Assistant Satellite";
+            package = lib.mkOption {
+              type = lib.types.package;
+              default = defaultPkg;
+              description = "The satellite package to use.";
+            };
+            environmentFile = mkOption {
+              type = types.nullOr types.path;
+              default = null;
+              description = "Path to an environment file for secrets (e.g., API keys if required).";
+            };
+
+            orchestratorUrl = mkOption {
+              type = types.str;
+              default = "http://localhost:8000";
+              description = "The URL of the Voice Assistant Orchestrator.";
+            };
+
+            micDeviceIndex = mkOption {
+              type = types.nullOr types.int;
+              default = null;
+              description = "Optional specific PortAudio device index for the microphone.";
+            };
+
+            wakewordModel = mkOption {
+              type = types.str;
+              default = "alexa";
+              description = "The wakeword model to use (alexa, etc).";
+            };
+
+            vadThreshold = mkOption {
+              type = types.float;
+              default = 0.5;
+              description = "Voice Activity Detection sensitivity.";
+            };
+          };
+
+          # Ensure the logic uses 'cfg.package' in ExecStart
+          config = lib.mkIf cfg.enable {
+            systemd.services.voice-satellite = {
+              description = "Voice Assistant Satellite Service";
+              wantedBy = [ "multi-user.target" ];
+              after = [
+                "network.target"
+                "sound.target"
+              ];
+
+              serviceConfig = {
+                ExecStart = "${cfg.package}/bin/voice-satellite";
+
+                EnvironmentFile = lib.mkIf (cfg.environmentFile != null) cfg.environmentFile;
+
+                # --- Audio & Performance ---
+                # User needs to be in 'audio' group to access the mic
+                SupplementaryGroups = [ "audio" ];
+
+                # Realtime priority to prevent audio glitches (optional)
+                CPUSchedulingPolicy = "fifo";
+                CPUSchedulingPriority = 50;
+
+                # --- Hardening ---
+                DynamicUser = true;
+                ProtectSystem = "strict";
+                ProtectHome = true;
+                PrivateTmp = true;
+                # Required for PortAudio/ALSA to see hardware
+                DeviceAllow = [ "/dev/snd" ];
+                DevicePolicy = "closed";
+              };
+
+              environment = {
+                ORCHESTRATOR_URL = cfg.settings.orchestratorUrl;
+                WAKEWORD_MODEL = cfg.settings.wakewordModel;
+                VAD_THRESHOLD = toString cfg.settings.vadThreshold;
+                MIC_INDEX = lib.mkIf (cfg.settings.micDeviceIndex != null) (toString cfg.settings.micDeviceIndex);
+
+                PYTHONUNBUFFERED = "1";
+              };
+            };
+          };
+        };
+
       devShells.${system} = {
         default =
           (pkgs.buildFHSEnv {
