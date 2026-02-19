@@ -24,23 +24,84 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      # python = pkgs.python311;  <-- Change this
+      python = pkgs.python3; # <-- To this (usually 3.12)
+      # --- Custom Packages ---
+
+      # OpenWakeWord is not in nixpkgs, so we package it here.
+      # Note: We stripped tflite-runtime as discussed.
+      openwakeword = python.pkgs.buildPythonPackage rec {
+        pname = "openwakeword";
+        version = "0.6.0";
+        # format = "pyproject";
+        pyproject = true;
+
+        src = python.pkgs.fetchPypi {
+          inherit pname version;
+          # 🔴 IMPORTANT: Run 'nix build', grab the hash from the error, and paste it here:
+          hash = "sha256-NoWNkPEYPjB0hVl6kSpOPDOEsU6pkj+D/q/658FWVWU=";
+        };
+        postPatch = ''
+          sed -i '/tflite-runtime/d' setup.py
+          if [ -f requirements.txt ]; then
+            sed -i '/tflite-runtime/d' requirements.txt
+          fi
+        '';
+
+        propagatedBuildInputs = with python.pkgs; [
+          onnxruntime
+          scipy
+          scikit-learn
+          numpy
+          setuptools
+          tqdm
+          requests
+        ];
+      };
+
+      # --- Dependency List ---
+      satelliteDependencies = with python.pkgs; [
+        # Core Audio/Video
+        av # (PyAV) - Builds against ffmpeg automatically
+        pyaudio # Builds against portaudio automatically
+        pydub # Wrapper for ffmpeg
+
+        # AI / Logic
+        openwakeword # Our custom package above
+        onnxruntime
+        numpy
+        scipy
+        requests
+
+        # Utilities
+        pydantic
+        pydantic-settings
+        python-dotenv
+        certifi
+        tqdm
+      ];
+
     in
     {
-      packages.${system}.dockerEnv = pkgs.buildEnv {
-        name = "Satellite docker dependencies";
-        paths = [
-          # Runtime dependencies
-          pkgs.python311
-          pkgs.python311Packages.pip
-          pkgs.python311Packages.setuptools
-          pkgs.ffmpeg_7-headless
-          pkgs.portaudio
+      # --- PACKAGE BUILD ---
+      packages.${system} = {
+        default = python.pkgs.buildPythonApplication {
+          pname = "voice-satellite";
+          version = "0.1.0";
+          pyproject = true;
+          src = ./.;
 
-          # Build-time dependencies (needed for pip install to work)
-          pkgs.pkg-config
-          pkgs.stdenv.cc # Includes GCC and standard C libraries
-          pkgs.gnumake
-        ];
+          propagatedBuildInputs = satelliteDependencies;
+
+          # Runtime Dependencies (Binaries)
+          # We need to ensure 'ffmpeg' is in the PATH for pydub to find it
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+
+          postInstall = ''
+            wrapProgram $out/bin/voice-satellite \
+              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.ffmpeg_7-headless ]}
+          '';
+        };
       };
       devShells.${system} = {
         default =

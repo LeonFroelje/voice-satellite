@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voice-satellite"
+version = "0.1.0"
+description = "Voice Assistant Satellite Client"
+requires-python = ">=3.11"
+dependencies = [
+    "av",                # For PyAV
+    "PyAudio",           # For microphone access
+    "pydub",             # Audio manipulation
+    "openwakeword",      # Wake word detection
+    "onnxruntime",       # Inference engine for openwakeword
+    "numpy",
+    "scipy",
+    "requests",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "certifi",
+    "tqdm"
+]
+
+[project.scripts]
+# This creates the 'voice-satellite' command
+voice-satellite = "main:main"
+# This creates a command to download models easily
+satellite-download-models = "download_models:main"
+# This creates a command to verify audio setup
+satellite-verify-audio = "verify_audio:main"
+
+[tool.setuptools]
+# Explicitly list modules because of the flat layout
+py-modules = [
+    "main",
+    "config",
+    "stt_client",
+    "verify_audio",
+    "download_models"
+]
