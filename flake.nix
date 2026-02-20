@@ -287,15 +287,16 @@
                 "network.target"
                 "sound.target"
               ];
+              unitConfig.ConditionUser = "satellite";
               serviceConfig = {
                 User = "satellite";
                 ExecStart = "${pkgs.squeezelite}/bin/squeezelite -n ${
                   if cfg.room != null then cfg.room else "Satellite"
                 } -o pulse";
-
                 # Restart helps mitigate the boot race condition if PipeWire takes a second to start
                 Restart = "always";
                 RestartSec = "3s";
+                StartLimitIntervalSec = 0;
 
                 # %U is a systemd specifier that dynamically resolves to the UID of the 'satellite' user
                 Environment = "PULSE_SERVER=unix:/run/user/%U/pulse/native";
@@ -316,7 +317,7 @@
                 "network.target"
                 "sound.target"
               ];
-
+              unitConfig.ConditionUser = "satellite";
               serviceConfig = {
                 ExecStart = "${cfg.package}/bin/voice-satellite";
                 EnvironmentFile = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
