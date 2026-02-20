@@ -274,13 +274,12 @@
               ];
 
               serviceConfig = {
-                # 1. Run as your primary user to access PipeWire
-                User = "tv";
-
+                User = "root";
+                Group = "root";
                 # 2. Points to your user's PipeWire socket
-                Environment = [
-                  "XDG_RUNTIME_DIR=/run/user/1000" # Check 'id -u tv' to confirm this is 1000
-                ];
+                # Environment = [
+                #   "XDG_RUNTIME_DIR=/run/user/1000" # Check 'id -u tv' to confirm this is 1000
+                # ];
 
                 ExecStart = "${cfg.package}/bin/voice-satellite";
 
