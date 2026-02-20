@@ -31,6 +31,28 @@ audio_manager = pyaudio.PyAudio()
 speaker_stream = None
 
 
+def play_local_wav(file_path):
+    """Plays a local WAV file if it exists."""
+    if not file_path or not os.path.exists(file_path):
+        logger.info(f"File {file_path} not found. Not playing sound.")
+        return
+
+    try:
+        audio_segment = AudioSegment.from_wav(file_path)
+        global speaker_stream
+        if speaker_stream is None:
+            speaker_stream = audio_manager.open(
+                format=audio_manager.get_format_from_width(audio_segment.sample_width),
+                channels=audio_segment.channels,
+                rate=audio_segment.frame_rate,
+                output=True,
+                output_device_index=settings.speaker_index,
+            )
+        speaker_stream.write(audio_segment.raw_data)
+    except Exception as e:
+        logger.error(f"Failed to play local sound {file_path}: {e}")
+
+
 # --- Silero VAD ONNX Wrapper ---
 def ensure_silero_vad_model():
     """Downloads the lightweight Silero VAD ONNX model if it's not present locally."""
@@ -228,10 +250,11 @@ def main():
                 logger.info(
                     f"Wake Word Detected! (Confidence: {prediction[settings.wakeword_models]:.2f})"
                 )
+                play_local_wav(settings.wake_sound)
 
                 # --- COMMAND RECORDING LOOP ---
                 audio_recorded = record_until_silence(
-                    mic_stream, silero_vad, silence_timeout=2
+                    mic_stream, silero_vad, silence_timeout=settings.silence_timeout
                 )
 
                 # --- PROCESSING ---
@@ -240,6 +263,7 @@ def main():
 
                     if transcribed_text.strip():
                         logger.info(f"Transcribed: {transcribed_text}")
+                        play_local_wav(settings.done_sound)
                         send_to_orchestrator(transcribed_text)
                     else:
                         logger.info("No text transcribed.")

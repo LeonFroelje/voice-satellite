@@ -32,8 +32,11 @@ class SatelliteSettings(BaseSettings):
         default="alexa", description="Comma-separated list of wakeword models to load"
     )
     output_delay: Optional[int] = Field(
-        default = 1,
-        description="The delay for TTS audio output stream in seconds"
+        default=1, description="The delay for TTS audio output stream in seconds"
+    )
+    silence_timeout: int = Field(
+        default=2,
+        description="The silence duration in seconds after which command recording should stop",
     )
 
     # --- Context ---
@@ -56,7 +59,15 @@ class SatelliteSettings(BaseSettings):
     )
     # --- System ---
     log_level: str = "INFO"
-
+    # --- Sound Effects ---
+    wake_sound: Optional[str] = Field(
+        default="./assets/sounds/meow.wav",
+        description="Path to WAV file to play when wakeword is detected",
+    )
+    done_sound: Optional[str] = Field(
+        default="./assets/sounds/meow.wav",
+        description="Path to WAV file to play when processing is finished",
+    )
     # Pydantic Config: Tells it to read from .env files automatically
     model_config = SettingsConfigDict(env_prefix="SAT_")
 
@@ -77,6 +88,7 @@ def get_settings() -> SatelliteSettings:
     parser.add_argument(
         "--wakeword-threshold", type=float, help="Wakeword sensitivity (0.0-1.0)"
     )
+    parser.add_argument("--silence-timeout", help="VAD silence timeout")
     parser.add_argument("--whisper-host", help="Whisper server host")
     parser.add_argument("--whisper-port", type=int, help="Whisper server port")
     parser.add_argument("--whisper-model", help="Whisper model size")
@@ -84,7 +96,9 @@ def get_settings() -> SatelliteSettings:
     parser.add_argument("--room", help="Room name (e.g., kitchen, bedroom)")
     parser.add_argument("--log-level", help="Logging Level (DEBUG, INFO)")
     parser.add_argument("--output-delay", help="Output delay in seconds")
-
+    # Inside get_settings() function, add these to the parser:
+    parser.add_argument("--wake-sound", help="Path to wake sound WAV")
+    parser.add_argument("--done-sound", help="Path to done sound WAV")
     args, unknown = parser.parse_known_args()
     print(args)
 
