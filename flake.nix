@@ -267,6 +267,11 @@
               default = false;
               description = "Wether to install and configure squeezelite for music assistant";
             };
+            musicAssistantIp = mkOption {
+              type = types.str;
+              default = "127.0.0.1";
+
+            };
           };
 
           config = lib.mkIf cfg.enable {
@@ -292,7 +297,7 @@
                 # -o pulse tells it to use PulseAudio (which is intercepted by PipeWire)
                 ExecStart = "${pkgs.squeezelite}/bin/squeezelite -n ${
                   if cfg.room != null then cfg.room else "Satellite"
-                }";
+                } -s ${cfg.musicAssistantIp}";
 
                 Restart = "always";
                 RestartSec = "3s"; # %U is a systemd specifier that dynamically resolves to the UID of the 'satellite' user
