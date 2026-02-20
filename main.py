@@ -2,19 +2,18 @@ import pyaudio
 import numpy as np
 import base64
 import io
+import os
 import requests
 import logging
 import time
+import wave
+import urllib.request
+import onnxruntime as ort
 
 from pydub import AudioSegment
 from openwakeword.model import Model
-from openwakeword.utils import download_models
-from stt_client import TranscriptionClient
-
-# Import configuration
 from config import settings
 
-print(settings)
 # --- Logging Setup ---
 logging.basicConfig(
     level=settings.log_level,
@@ -26,19 +25,61 @@ logger = logging.getLogger("Satellite")
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-CHUNK = 1280
-speaker_stream = None
+CHUNK = 1280  # openwakeword prefers 1280
+
 audio_manager = pyaudio.PyAudio()
+speaker_stream = None
 
 
+# --- Silero VAD ONNX Wrapper ---
+def ensure_silero_vad_model():
+    """Downloads the lightweight Silero VAD ONNX model if it's not present locally."""
+    model_path = "silero_vad.onnx"
+    if not os.path.exists(model_path):
+        logger.info("Downloading Silero VAD ONNX model (~1.8MB)...")
+        url = "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+        urllib.request.urlretrieve(url, model_path)
+        logger.info("Downloaded silero_vad.onnx")
+    return model_path
+
+
+class SileroVAD:
+    def __init__(self, model_path):
+        # We limit threads to 1 since VAD is extremely lightweight and we want to save CPU
+        options = ort.SessionOptions()
+        options.inter_op_num_threads = 1
+        options.intra_op_num_threads = 1
+        self.session = ort.InferenceSession(model_path, sess_options=options)
+        self.reset_states()
+
+    def reset_states(self):
+        # Silero VAD ONNX requires a state tensor of shape (2, 1, 128)
+        self.state = np.zeros((2, 1, 128), dtype=np.float32)
+
+    def process(self, audio_chunk_int16, sr=16000):
+        # Convert raw int16 PCM to float32 normalized between -1.0 and 1.0
+        audio_float32 = (
+            np.frombuffer(audio_chunk_int16, dtype=np.int16).astype(np.float32)
+            / 32768.0
+        )
+
+        ort_inputs = {
+            "input": np.expand_dims(audio_float32, axis=0),
+            "state": self.state,
+            "sr": np.array([sr], dtype=np.int64),
+        }
+        ort_outs = self.session.run(None, ort_inputs)
+        out, self.state = ort_outs
+        return out[0][0]  # Returns speech probability (0.0 to 1.0)
+
+
+# --- Core Functions ---
 def play_audio_from_b64(b64_string):
     global speaker_stream
     try:
         audio_data = base64.b64decode(b64_string)
         audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
 
-        # Check if we need to (re)open the stream (if format changed or first run)
-        # Note: In a production satellite, your TTS usually sends a consistent format.
         if speaker_stream is None:
             speaker_stream = audio_manager.open(
                 format=audio_manager.get_format_from_width(audio_segment.sample_width),
@@ -49,32 +90,48 @@ def play_audio_from_b64(b64_string):
             )
 
         logger.debug(f"Playing audio ({audio_segment.duration_seconds}s)...")
-
-        speaker_stream.start_stream()
-        # Wake up silence
-        silence_len = int(
-            audio_segment.frame_rate * audio_segment.channels * settings.output_delay
-        )  # 0.2s
-        silence = b"\x00" * silence_len
-        speaker_stream.write(silence)
         speaker_stream.write(audio_segment.raw_data)
-
     except Exception as e:
         logger.error(f"Audio playback failed: {e}")
-        # If the stream crashed, reset it so the next call tries to recreate it
         speaker_stream = None
 
 
+def transcribe_audio_api(audio_bytes: bytes):
+    """Sends raw audio bytes to an OpenAI-compatible transcription endpoint."""
+    logger.info("Sending audio to Transcription API...")
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(audio_manager.get_sample_size(FORMAT))
+        wf.setframerate(RATE)
+        wf.writeframes(audio_bytes)
+    buffer.seek(0)
+
+    try:
+        url = f"{settings.whisper_host}:{settings.whisper_port}/v1/audio/transcriptions"
+        files = {"file": ("audio.wav", buffer, "audio/wav")}
+        data = {"model": settings.whisper_model}
+        headers = {}
+        if settings.api_token:
+            headers["Authorization"] = f"Bearer {settings.api_token.get_secret_value()}"
+
+        response = requests.post(
+            url, files=files, data=data, headers=headers, timeout=15
+        )
+
+        if response.ok:
+            return response.json().get("text", "")
+        else:
+            logger.error(f"STT API Error: {response.status_code} - {response.text}")
+    except Exception as e:
+        logger.error(f"Failed to connect to STT API: {e}")
+    return ""
+
+
 def send_to_orchestrator(text: str):
-    """
-    Sends the transcribed text + room context to the Brain.
-    """
-    logger.debug(f"Sending to Orchestrator ({settings.orchestrator_url})...")
-
-    # Send room where satellite is placed in as well as transcribed text
-    # to enable turning lights off in specific rooms without having to specify the room
+    logger.debug(f"Sending to Orchestrator...")
     payload = {"text": text, "room": settings.room}
-
     headers = {}
     if settings.api_token:
         headers["Authorization"] = f"Bearer {settings.api_token.get_secret_value()}"
@@ -85,68 +142,82 @@ def send_to_orchestrator(text: str):
         )
         if response.ok:
             data = response.json()
-            text_resp = data.get("response_text", "")
-            logger.debug(f"Response: {text_resp}")
-
             audio_b64 = data.get("audio_b64")
             if audio_b64:
                 play_audio_from_b64(audio_b64)
-            else:
-                logger.warning("No audio received from Orchestrator")
         else:
-            logger.error(
-                f"Orchestrator returned {response.status_code}: {response.text}"
-            )
-
+            logger.error(f"Orchestrator Error: {response.status_code}")
     except Exception as e:
-        logger.error(f"Failed to connect to Orchestrator: {e}")
+        logger.error(f"Orchestrator Connection Failed: {e}")
+
+
+def record_until_silence(
+    mic_stream, vad_model: SileroVAD, max_seconds=10, silence_timeout=1.5
+):
+    """
+    Records audio using Silero VAD.
+    Stops if silence is detected, max_seconds is reached, or no initial speech is heard.
+    """
+    logger.info("Listening for command...")
+    vad_model.reset_states()
+
+    frames = []
+    SILERO_CHUNK = 512  # Silero strictly prefers 512 samples for 16kHz (32ms chunk)
+
+    start_time = time.time()
+    last_speech_time = time.time()
+    has_spoken = False
+
+    while (time.time() - start_time) < max_seconds:
+        data = mic_stream.read(SILERO_CHUNK, exception_on_overflow=False)
+        frames.append(data)
+
+        speech_prob = vad_model.process(data, RATE)
+        current_time = time.time()
+
+        if speech_prob > 0.5:  # 50% threshold is ideal for Silero
+            last_speech_time = current_time
+            has_spoken = True
+
+        # Stopping conditions
+        if has_spoken and (current_time - last_speech_time) > silence_timeout:
+            logger.debug("Silence detected, finalizing recording.")
+            break
+        elif not has_spoken and (current_time - start_time) > 3.0:
+            logger.debug("No initial speech detected within 3 seconds, aborting.")
+            break
+
+    return b"".join(frames)
 
 
 def main():
-    # download_models()
+    # 1. Initialize Models
     owwModel = Model(wakeword_models=[settings.wakeword_models])
 
-    global audio_manager
-    mic_stream = None
+    model_path = ensure_silero_vad_model()
+    silero_vad = SileroVAD(model_path)
 
-    # --- ROBUST OPEN FUNCTION ---
-    def safe_open_stream(retries=3, delay=1.0):
-        """Attempts to open the stream, retrying if the device is busy."""
-        for attempt in range(retries):
-            try:
-                stream = audio_manager.open(
-                    format=FORMAT,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    input=True,
-                    frames_per_buffer=CHUNK,
-                    input_device_index=settings.mic_index,
-                )
-                return stream
-            except OSError as e:
-                if attempt < retries - 1:
-                    logger.warning(
-                        f"Microphone busy, retrying in {delay}s... ({attempt + 1}/{retries})"
-                    )
-                    time.sleep(delay)
-                else:
-                    logger.error("Failed to open microphone after multiple attempts.")
-                    raise e
+    # 2. Open Mic
+    def safe_open_stream():
+        return audio_manager.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE,
+            input=True,
+            frames_per_buffer=CHUNK,
+            input_device_index=settings.mic_index,
+        )
 
-    # Initial open
     mic_stream = safe_open_stream()
-
-    logger.info(f"Satellite started in room: '{settings.room}'")
-    logger.info(f"Listening for wakeword (Threshold: {settings.wakeword_threshold})...")
+    logger.info(f"Satellite started. Room: {settings.room}")
 
     try:
         while True:
-            # 1. Listen for Wake Word
-            # We wrap read in try/except because USB mics can glitch
+            # --- WAKEWORD DETECTION LOOP ---
             try:
+                # OpenWakeWord prefers chunks of 1280
                 audio_data = mic_stream.read(CHUNK, exception_on_overflow=False)
             except OSError:
-                # If read fails, try to reset the stream
                 mic_stream = safe_open_stream()
                 continue
 
@@ -154,81 +225,35 @@ def main():
             prediction = owwModel.predict(audio_np)
 
             if prediction[settings.wakeword_models] >= settings.wakeword_threshold:
-                logger.info("Wake Word Detected!")
-
-                # 2. CLOSE MIC IMMEDIATELY
-                if mic_stream:
-                    mic_stream.stop_stream()
-                    mic_stream.close()
-                    mic_stream = None  # Mark as closed so 'finally' block doesn't panic
-
-                # 3. TRANSCRIPTION
-                full_text = ""
-
-                def callback(text, _):
-                    nonlocal full_text
-                    logger.debug(text)
-                    full_text = text
-
-                client = TranscriptionClient(
-                    settings.whisper_host,
-                    settings.whisper_port,
-                    lang=settings.language,
-                    model=settings.whisper_model,
-                    use_vad=True,
-                    transcription_callback=callback,
+                logger.info(
+                    f"Wake Word Detected! (Confidence: {prediction[settings.wakeword_models]:.2f})"
                 )
 
-                # Run Transcription
-                client.record_seconds = 10
-                try:
-                    client()
-                except Exception as e:
-                    logger.error(f"Transcription failed: {e}")
+                # --- COMMAND RECORDING LOOP ---
+                audio_recorded = record_until_silence(
+                    mic_stream, silero_vad, silence_timeout=2
+                )
 
-                # 4. Handle Result
-                if full_text.strip():
-                    client.client.close_websocket()
-                    client.finalize_recording(0)
-                    client.client.audio_bytes
-                    logger.info(f"Transcribed: {full_text}")
-                    send_to_orchestrator(full_text)
-                else:
-                    logger.info("No speech detected.")
+                # --- PROCESSING ---
+                if len(audio_recorded) > 0:
+                    transcribed_text = transcribe_audio_api(audio_recorded)
 
-                # client.client.close_websocket()
-                # client.finalize_recording(0)
-                # client.client.audio_bytes
-                # 5. RE-OPEN MIC WITH DELAY
-                # Give the transcription client 1 second to fully release the hardware
-                time.sleep(1.0)
+                    if transcribed_text.strip():
+                        logger.info(f"Transcribed: {transcribed_text}")
+                        send_to_orchestrator(transcribed_text)
+                    else:
+                        logger.info("No text transcribed.")
 
-                logger.debug("Restarting microphone stream...")
+                # Reset models for the next interaction
                 owwModel.reset()
-                mic_stream = safe_open_stream()
-
-                # Flush the buffer
-                try:
-                    for _ in range(5):
-                        mic_stream.read(CHUNK, exception_on_overflow=False)
-                except Exception:
-                    pass
-
-                logger.info("Listening again...")
+                logger.info("Listening for wakeword...")
 
     except KeyboardInterrupt:
         logger.info("Stopping...")
-    except Exception as e:
-        logger.error(f"Critical Error: {e}")
     finally:
-        # Safe cleanup
-        if mic_stream is not None:
-            try:
-                if mic_stream.is_active():
-                    mic_stream.stop_stream()
-                mic_stream.close()
-            except Exception:
-                pass
+        if mic_stream:
+            mic_stream.stop_stream()
+            mic_stream.close()
         audio_manager.terminate()
 
 
