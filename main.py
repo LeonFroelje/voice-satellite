@@ -69,8 +69,9 @@ def _play_normalized_audio(audio_segment: AudioSegment):
             f"Playing audio ({normalized_audio.duration_seconds:.2f}s) at {OUTPUT_RATE}Hz..."
         )
         speaker_stream.write(normalized_audio.raw_data)
-        speaker_stream.srop_stream()
+        speaker_stream.stop_stream()
         speaker_stream.close()
+        speaker_stream = None
 
     except Exception as e:
         logger.error(f"Audio playback failed: {e}")
