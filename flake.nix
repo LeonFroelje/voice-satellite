@@ -301,7 +301,7 @@
                   env = {
                     SAT_ORCHESTRATOR_URL = cfg.orchestratorUrl;
                     SAT_MIC_INDEX = if cfg.micDeviceIndex != null then toString cfg.micDeviceIndex else null;
-                    SAT_SPEAKER_INDEX = if cfg.speaker_index != null then toString cfg.speaker_index else null; # Fixed name sync
+                    SAT_SPEAKER_INDEX = if cfg.speakerIndex != null then toString cfg.speaker_index else null; # Fixed name sync
                     SAT_WAKEWORD_THRESHOLD = toString cfg.wakewordThreshold;
                     SAT_WAKEWORD_MODELS = cfg.wakewordModels;
                     SAT_OUTPUT_DELAY = toString cfg.outputDelay;
