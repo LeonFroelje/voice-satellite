@@ -280,7 +280,7 @@
               # Crucial: Boots a background user session (and PipeWire) on startup
               linger = true;
             };
-            systemd.user.services.squeezelite = lib.mkIf cfg.configureSqueezelite {
+            systemd.user.services.squeezelite = {
               description = "Squeezelite Service (PulseAudio)";
               wantedBy = [ "default.target" ];
               after = [
