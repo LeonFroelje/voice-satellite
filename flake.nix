@@ -282,23 +282,20 @@
             };
             systemd.user.services.squeezelite = {
               description = "Squeezelite Service (PulseAudio)";
+
+              # CRITICAL: User services must use default.target
               wantedBy = [ "default.target" ];
-              after = [
-                "network.target"
-                "sound.target"
-              ];
+
               unitConfig.ConditionUser = "satellite";
-              # unitConfig.ConditionUser = "satellite";
+
               serviceConfig = {
-                User = "satellite";
+                # -o pulse tells it to use PulseAudio (which is intercepted by PipeWire)
                 ExecStart = "${pkgs.squeezelite}/bin/squeezelite -n ${
                   if cfg.room != null then cfg.room else "Satellite"
                 } -o pulse";
-                # Restart helps mitigate the boot race condition if PipeWire takes a second to start
-                Restart = "always";
-                RestartSec = "3s";
 
-                # %U is a systemd specifier that dynamically resolves to the UID of the 'satellite' user
+                Restart = "always";
+                RestartSec = "3s"; # %U is a systemd specifier that dynamically resolves to the UID of the 'satellite' user
               };
             };
             services.pipewire = {
