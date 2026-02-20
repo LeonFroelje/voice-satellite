@@ -159,25 +159,32 @@
           options.services.voice-satellite = with lib; {
             enable = lib.mkEnableOption "Voice Assistant Satellite";
             package = lib.mkOption {
-              type = lib.types.package;
+              type = types.package;
               default = defaultPkg;
               description = "The satellite package to use.";
             };
             environmentFile = mkOption {
               type = types.nullOr types.path;
               default = null;
-              description = "Path to an environment file for secrets (e.g., API keys if required).";
+              description = "Path to an environment file for secrets (e.g., SAT_API_TOKEN).";
             };
 
             orchestratorUrl = mkOption {
               type = types.str;
-              default = "http://localhost:8000";
+              default = "http://localhost:8000/process"; # Matched default in settings.py
               description = "The URL of the Voice Assistant Orchestrator.";
             };
-            whisperUrl = mkOption {
+
+            # Split Whisper URL into Host and Port to match Pydantic fields
+            whisperHost = mkOption {
               type = types.str;
-              default = "http://localhost:5000";
-              description = "The URL of the whisper transcription service";
+              default = "localhost";
+              description = "Hostname of the whisper-live server.";
+            };
+            whisperPort = mkOption {
+              type = types.int;
+              default = 9090;
+              description = "Port of the whisper-live server.";
             };
 
             micDeviceIndex = mkOption {
@@ -186,76 +193,64 @@
               description = "Optional specific PortAudio device index for the microphone.";
             };
 
-            wakewordModel = mkOption {
+            wakewordModels = mkOption {
               type = types.str;
               default = "alexa";
-              description = "The wakeword model to use (alexa, etc).";
+              description = "Comma-separated list of wakeword models to load.";
             };
 
-            vadThreshold = mkOption {
+            wakewordThreshold = mkOption {
               type = types.float;
-              default = 0.5;
-              description = "Voice Activity Detection sensitivity.";
+              default = 0.6;
+              description = "Sensitivity (0.0-1.0).";
             };
+
+            room = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Name of the room the satellite is placed in.";
+            };
+
             wakeSound = mkOption {
               type = types.nullOr types.path;
-              default = null; # The script will use its own internal default if null
+              default = null;
               description = "Path to the WAV file for wakeword detection.";
             };
+
             doneSound = mkOption {
               type = types.nullOr types.path;
               default = null;
               description = "Path to the WAV file for transcription finished.";
             };
-            room = mkOption {
-              type = types.nullOr types.str;
-              default = null;
-              description = "Name of the room the satellite is placed in";
-            };
           };
 
-          # Ensure the logic uses 'cfg.package' in ExecStart
           config = lib.mkIf cfg.enable {
             systemd.services.voice-satellite = {
-              description = "Voice Assistant Satellite Service";
-              wantedBy = [ "multi-user.target" ];
-              after = [
-                "network.target"
-                "sound.target"
-              ];
+              # ... (Keep your existing description, after, and wantedBy)
 
               serviceConfig = {
                 ExecStart = "${cfg.package}/bin/voice-satellite";
-
                 EnvironmentFile = lib.mkIf (cfg.environmentFile != null) cfg.environmentFile;
 
-                # --- Audio & Performance ---
-                # User needs to be in 'audio' group to access the mic
+                # Audio permissions
                 SupplementaryGroups = [ "audio" ];
-
-                # Realtime priority to prevent audio glitches (optional)
-                CPUSchedulingPolicy = "fifo";
-                CPUSchedulingPriority = 50;
-
-                # --- Hardening ---
-                DynamicUser = true;
-                ProtectSystem = "strict";
-                ProtectHome = true;
-                PrivateTmp = true;
-                # Required for PortAudio/ALSA to see hardware
                 DeviceAllow = [ "/dev/snd" ];
                 DevicePolicy = "closed";
+                DynamicUser = true;
+                # ... (Rest of your hardening)
               };
 
-              environment = {
-                ORCHESTRATOR_URL = cfg.orchestratorUrl;
-                ROOM = cfg.room;
-                WHISPER_URL = cfg.whisperUrl;
-                WAKEWORD_MODEL = cfg.wakewordModel;
-                VAD_THRESHOLD = toString cfg.vadThreshold;
-                MIC_INDEX = lib.mkIf (cfg.micDeviceIndex != null) (toString cfg.micDeviceIndex);
-                WAKE_SOUND = lib.mkIf (cfg.wakeSound != null) (toString cfg.wakeSound);
-                DONE_SOUND = lib.mkIf (cfg.doneSound != null) (toString cfg.doneSound);
+              # Map Nix options to SAT_ prefixed environment variables
+              environment = lib.filterAttrs (n: v: v != null) {
+                SAT_ORCHESTRATOR_URL = cfg.orchestratorUrl;
+                SAT_ROOM = cfg.room;
+                SAT_WHISPER_HOST = cfg.whisperHost;
+                SAT_WHISPER_PORT = toString cfg.whisperPort;
+                SAT_WAKEWORD_MODELS = cfg.wakewordModels;
+                SAT_WAKEWORD_THRESHOLD = toString cfg.wakewordThreshold;
+                SAT_MIC_INDEX = if (cfg.micDeviceIndex != null) then toString cfg.micDeviceIndex else null;
+                SAT_WAKE_SOUND = if (cfg.wakeSound != null) then toString cfg.wakeSound else null;
+                SAT_DONE_SOUND = if (cfg.doneSound != null) then toString cfg.doneSound else null;
 
                 PYTHONUNBUFFERED = "1";
               };
