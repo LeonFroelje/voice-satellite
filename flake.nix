@@ -174,6 +174,11 @@
               default = "http://localhost:8000";
               description = "The URL of the Voice Assistant Orchestrator.";
             };
+            whisperUrl = mkOption {
+              type = types.str;
+              default = "http://localhost:5000";
+              description = "The URL of the whisper transcription service";
+            };
 
             micDeviceIndex = mkOption {
               type = types.nullOr types.int;
@@ -201,6 +206,11 @@
               type = types.nullOr types.path;
               default = null;
               description = "Path to the WAV file for transcription finished.";
+            };
+            room = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Name of the room the satellite is placed in";
             };
           };
 
@@ -238,10 +248,12 @@
               };
 
               environment = {
-                ORCHESTRATOR_URL = cfg.settings.orchestratorUrl;
-                WAKEWORD_MODEL = cfg.settings.wakewordModel;
-                VAD_THRESHOLD = toString cfg.settings.vadThreshold;
-                MIC_INDEX = lib.mkIf (cfg.settings.micDeviceIndex != null) (toString cfg.settings.micDeviceIndex);
+                ORCHESTRATOR_URL = cfg.orchestratorUrl;
+                ROOM = cfg.room;
+                WHISPER_URL = cfg.whisperUrl;
+                WAKEWORD_MODEL = cfg.wakewordModel;
+                VAD_THRESHOLD = toString cfg.vadThreshold;
+                MIC_INDEX = lib.mkIf (cfg.micDeviceIndex != null) (toString cfg.micDeviceIndex);
                 WAKE_SOUND = lib.mkIf (cfg.wakeSound != null) (toString cfg.wakeSound);
                 DONE_SOUND = lib.mkIf (cfg.doneSound != null) (toString cfg.doneSound);
 
