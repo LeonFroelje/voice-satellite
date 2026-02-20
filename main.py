@@ -24,7 +24,7 @@ logger = logging.getLogger("Satellite")
 # --- Audio Constants ---
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 16000
+RATE = 44100
 CHUNK = 1280  # openwakeword prefers 1280
 OUTPUT_RATE = 24000
 audio_manager = pyaudio.PyAudio()
