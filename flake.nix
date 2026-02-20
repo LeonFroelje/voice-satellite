@@ -262,7 +262,7 @@
               default = null;
               description = "Path to WAV file for processing finished.";
             };
-            configure_squeezelite = mkOption {
+            configureSqueezelite = mkOption {
               type = types.bool;
               default = false;
               description = "Wether to install and configure squeezelite for music assistant";
@@ -280,7 +280,7 @@
               # Crucial: Boots a background user session (and PipeWire) on startup
               linger = true;
             };
-            systemd.services.squeezelite = lib.mkIf cfg.configure_squeezelite {
+            systemd.services.squeezelite = lib.mkIf cfg.configureSqueezelite {
               description = "Squeezelite Service (PulseAudio)";
               wantedBy = [ "multi-user.target" ];
               after = [
