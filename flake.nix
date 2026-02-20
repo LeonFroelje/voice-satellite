@@ -322,8 +322,8 @@
                 ExecStart = "${cfg.package}/bin/voice-satellite";
                 EnvironmentFile = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
 
-                User = "satellite";
-                SupplementaryGroups = [ "audio" ];
+                # User = "satellite";
+                # SupplementaryGroups = [ "audio" ];
 
                 # Connect to PipeWire if configured, otherwise fall back to raw ALSA
 
