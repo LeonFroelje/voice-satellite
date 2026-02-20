@@ -276,7 +276,14 @@
                 DeviceAllow = [ "/dev/snd" ];
                 DevicePolicy = "closed";
                 DynamicUser = true;
-
+                BindReadOnlyPaths = [
+                  "/dev/snd"
+                  "/etc/asound.conf"
+                  "/usr/share/alsa"
+                  "/var/lib/alsa"
+                  "/proc/asound" # Crucial for card enumeration
+                  "/sys/class/sound" # Crucial for card enumeration
+                ];
                 # Performance
                 CPUSchedulingPolicy = "fifo";
                 CPUSchedulingPriority = 50;
@@ -285,6 +292,7 @@
                 ProtectSystem = "strict";
                 ProtectHome = true;
                 PrivateTmp = true;
+                RuntimeDirectory = "voice-satellite";
               };
 
               # Map all variables to the SAT_ prefix for Pydantic
