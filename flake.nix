@@ -287,7 +287,7 @@
                 "network.target"
                 "sound.target"
               ];
-              unitConfig.ConditionUser = "satellite";
+              # unitConfig.ConditionUser = "satellite";
               serviceConfig = {
                 User = "satellite";
                 ExecStart = "${pkgs.squeezelite}/bin/squeezelite -n ${
@@ -296,7 +296,6 @@
                 # Restart helps mitigate the boot race condition if PipeWire takes a second to start
                 Restart = "always";
                 RestartSec = "3s";
-                StartLimitIntervalSec = 0;
 
                 # %U is a systemd specifier that dynamically resolves to the UID of the 'satellite' user
                 Environment = "PULSE_SERVER=unix:/run/user/%U/pulse/native";
@@ -328,7 +327,6 @@
                 # Connect to PipeWire if configured, otherwise fall back to raw ALSA
                 Environment = "PULSE_SERVER=unix:/run/user/%U/pulse/native";
 
-                PYTHONUNBUFFERED = "1";
                 Restart = "always";
                 RestartSec = "3s";
 
@@ -342,8 +340,22 @@
               environment =
                 let
                   env = {
-                    # ... [Keep your existing SAT_ environment mappings here] ...
+                    PYTHONUNBUFFERED = "1";
+                    SAT_ORCHESTRATOR_HOST = cfg.orchestratorHost;
+                    SAT_ORCHESTRATOR_PORT = toString cfg.orchestratorPort;
+                    SAT_ORCHESTRATOR_PROTOCOL = cfg.orchestratorProtocol;
+                    SAT_MIC_INDEX = if cfg.micIndex != null then toString cfg.micIndex else null;
+                    SAT_SPEAKER_INDEX = if cfg.speakerIndex != null then toString cfg.speakerIndex else null;
+                    SAT_WAKEWORD_THRESHOLD = toString cfg.wakewordThreshold;
+                    SAT_WAKEWORD_MODELS = cfg.wakewordModels;
+                    SAT_OUTPUT_DELAY = toString cfg.outputDelay;
+                    SAT_OUTPUT_CHANNELS = toString cfg.outputChannels;
+                    SAT_SILENCE_TIMEOUT = toString cfg.silenceTimeout;
                     SAT_ROOM = cfg.room;
+                    SAT_LANGUAGE = cfg.language;
+                    SAT_LOG_LEVEL = cfg.logLevel;
+                    SAT_WAKE_SOUND = if cfg.wakeSound != null then toString cfg.wakeSound else null;
+                    SAT_DONE_SOUND = if cfg.doneSound != null then toString cfg.doneSound else null;
                   };
                 in
                 lib.filterAttrs (n: v: v != null) env;
