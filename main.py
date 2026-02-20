@@ -27,7 +27,6 @@ CHANNELS = 1
 RATE = 16000
 CHUNK = 1280  # openwakeword prefers 1280
 OUTPUT_RATE = 24000
-OUTPUT_CHANNELS = 1
 audio_manager = pyaudio.PyAudio()
 speaker_stream = None
 
@@ -38,7 +37,7 @@ def _play_normalized_audio(audio_segment: AudioSegment):
 
     # 1. Force the audio to match our Master Output Format
     normalized_audio = audio_segment.set_frame_rate(OUTPUT_RATE).set_channels(
-        OUTPUT_CHANNELS
+        settings.output_channels
     )
     if (
         hasattr(settings, "output_delay")
@@ -49,7 +48,7 @@ def _play_normalized_audio(audio_segment: AudioSegment):
         # Generate pure silence
         silence = AudioSegment.silent(duration=delay_ms, frame_rate=OUTPUT_RATE)
         # Ensure the silence strictly matches our channels to prevent concatenation errors
-        silence = silence.set_channels(OUTPUT_CHANNELS)
+        silence = silence.set_channels(settings.output_channels)
 
         # Prepend the silence to the actual audio
         normalized_audio = silence + normalized_audio
@@ -60,7 +59,7 @@ def _play_normalized_audio(audio_segment: AudioSegment):
                 format=audio_manager.get_format_from_width(
                     normalized_audio.sample_width
                 ),
-                channels=OUTPUT_CHANNELS,
+                channels=settings.output_channels,
                 rate=OUTPUT_RATE,
                 output=True,
                 output_device_index=settings.speaker_index,

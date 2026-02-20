@@ -38,6 +38,9 @@ class SatelliteSettings(BaseSettings):
         default=1000,
         description="The delay for TTS audio output stream in milliseconds",
     )
+    output_channels: Optional[int] = Field(
+        default=1, description="The number of output channels"
+    )
     silence_timeout: int = Field(
         default=2,
         description="The silence duration in seconds after which command recording should stop",
@@ -100,6 +103,7 @@ def get_settings() -> SatelliteSettings:
     parser.add_argument("--room", help="Room name (e.g., kitchen, bedroom)")
     parser.add_argument("--log-level", help="Logging Level (DEBUG, INFO)")
     parser.add_argument("--output-delay", help="Output delay in seconds")
+    parser.add_argument("--output-channels", help="The number of output channels")
     # Inside get_settings() function, add these to the parser:
     parser.add_argument("--wake-sound", help="Path to wake sound WAV")
     parser.add_argument("--done-sound", help="Path to done sound WAV")
