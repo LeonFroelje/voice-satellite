@@ -26,31 +26,61 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 CHUNK = 1280  # openwakeword prefers 1280
-
+OUTPUT_RATE = 24000
+OUTPUT_CHANNELS = 1
 audio_manager = pyaudio.PyAudio()
 speaker_stream = None
 
 
+def _play_normalized_audio(audio_segment: AudioSegment):
+    """Internal helper to normalize and play any audio segment."""
+    global speaker_stream
+
+    # 1. Force the audio to match our Master Output Format
+    normalized_audio = audio_segment.set_frame_rate(OUTPUT_RATE).set_channels(
+        OUTPUT_CHANNELS
+    )
+
+    try:
+        # 2. Open the stream if it doesn't exist, locked to the Master Format
+        if speaker_stream is None:
+            speaker_stream = audio_manager.open(
+                format=audio_manager.get_format_from_width(
+                    normalized_audio.sample_width
+                ),
+                channels=OUTPUT_CHANNELS,
+                rate=OUTPUT_RATE,
+                output=True,
+                output_device_index=settings.speaker_index,
+            )
+
+        logger.debug(
+            f"Playing audio ({normalized_audio.duration_seconds:.2f}s) at {OUTPUT_RATE}Hz..."
+        )
+        speaker_stream.write(normalized_audio.raw_data)
+
+    except Exception as e:
+        logger.error(f"Audio playback failed: {e}")
+        # Clean up the broken stream so it can recover on the next attempt
+        if speaker_stream is not None:
+            try:
+                speaker_stream.close()
+            except Exception:
+                pass
+        speaker_stream = None
+
+
 def play_local_wav(file_path):
-    """Plays a local WAV file if it exists."""
+    """Plays a local WAV file, dynamically resampling it if necessary."""
     if not file_path or not os.path.exists(file_path):
-        logger.info(f"File {file_path} not found. Not playing sound.")
+        logger.warning(f"File {file_path} not found. Not playing sound.")
         return
 
     try:
         audio_segment = AudioSegment.from_wav(file_path)
-        global speaker_stream
-        if speaker_stream is None:
-            speaker_stream = audio_manager.open(
-                format=audio_manager.get_format_from_width(audio_segment.sample_width),
-                channels=audio_segment.channels,
-                rate=audio_segment.frame_rate,
-                output=True,
-                output_device_index=settings.speaker_index,
-            )
-        speaker_stream.write(audio_segment.raw_data)
+        _play_normalized_audio(audio_segment)
     except Exception as e:
-        logger.error(f"Failed to play local sound {file_path}: {e}")
+        logger.error(f"Failed to load local sound {file_path}: {e}")
 
 
 # --- Silero VAD ONNX Wrapper ---
@@ -98,25 +128,14 @@ class SileroVAD:
 
 # --- Core Functions ---
 def play_audio_from_b64(b64_string):
-    global speaker_stream
+    """Plays base64 encoded audio, dynamically resampling it if necessary."""
     try:
         audio_data = base64.b64decode(b64_string)
-        audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
-
-        if speaker_stream is None:
-            speaker_stream = audio_manager.open(
-                format=audio_manager.get_format_from_width(audio_segment.sample_width),
-                channels=audio_segment.channels,
-                rate=audio_segment.frame_rate,
-                output=True,
-                output_device_index=settings.speaker_index,
-            )
-
-        logger.debug(f"Playing audio ({audio_segment.duration_seconds}s)...")
-        speaker_stream.write(audio_segment.raw_data)
+        # Explicitly tell Pydub we are reading a WAV from memory
+        audio_segment = AudioSegment.from_file(io.BytesIO(audio_data), format="wav")
+        _play_normalized_audio(audio_segment)
     except Exception as e:
-        logger.error(f"Audio playback failed: {e}")
-        speaker_stream = None
+        logger.error(f"Failed to load base64 audio: {e}")
 
 
 def transcribe_audio_api(audio_bytes: bytes):
