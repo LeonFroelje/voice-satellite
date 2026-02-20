@@ -1,4 +1,7 @@
 import pyaudio
+import os
+import threading
+import time
 import numpy as np
 import base64
 import io
@@ -9,7 +12,7 @@ import time
 import wave
 import urllib.request
 import onnxruntime as ort
-
+from orchestrator_client import OrchestratorClient, OrchestratorResponse
 from pydub import AudioSegment
 from openwakeword.model import Model
 from config import settings
@@ -30,7 +33,50 @@ OUTPUT_RATE = 44100
 audio_manager = pyaudio.PyAudio()
 speaker_stream = None
 
+orchestrator_client = OrchestratorClient(
+    settings.orchestrator_host,
+    settings.orchestrator_port,
+    settings.orchestrator_token,
+    audio_manager,
+    settings.orchestrator_protocol,
+)
 
+
+def handle_satellite_actions(actions):
+    """Executes local actions requested by the Orchestrator."""
+    for action in actions:
+        # --- VOLUME CONTROL ---
+        if action.type == "set_volume":
+            level = action.payload.get("level", 50)
+            logger.info(f"Setting local volume to {level}%")
+
+            # Use ALSA amixer to set the volume on Card 3 (your Teufel speaker)
+            # Note: "PCM" or "Master" depends on how ALSA names your specific speaker's control.
+            # You can find the exact control name by running 'amixer -c 3 scontrols' in your terminal.
+            os.system(f"amixer -c 3 set PCM {level}%")
+
+        # --- TIMER CONTROL ---
+        elif action.type == "start_timer":
+            duration = action.payload.get("duration_seconds", 0)
+            logger.info(f"Starting timer for {duration} seconds")
+
+            # Run the timer in a background thread so it doesn't block the wake-word loop
+            def timer_thread(seconds):
+                time.sleep(seconds)
+                logger.info("Timer done!")
+                # Play a repeating alarm sound until interrupted, or just play it once
+                play_local_wav(settings.timer_sound)
+
+            threading.Thread(target=timer_thread, args=(duration,), daemon=True).start()
+
+
+# --- Inside your main recording loop ---
+# response = orchestrator_client.send_audio_to_process(audio_recorded)
+# if response:
+#     if response.actions:
+#         handle_satellite_actions(response.actions)
+#     if response.audio_b64:
+#         play_audio_from_b64(response.audio_b64)
 def _play_normalized_audio(audio_segment: AudioSegment):
     """Internal helper to normalize and play any audio segment."""
     global speaker_stream
@@ -152,61 +198,6 @@ def play_audio_from_b64(b64_string):
         logger.error(f"Failed to load base64 audio: {e}")
 
 
-def transcribe_audio_api(audio_bytes: bytes):
-    """Sends raw audio bytes to an OpenAI-compatible transcription endpoint."""
-    logger.info("Sending audio to Transcription API...")
-
-    buffer = io.BytesIO()
-    with wave.open(buffer, "wb") as wf:
-        wf.setnchannels(CHANNELS)
-        wf.setsampwidth(audio_manager.get_sample_size(FORMAT))
-        wf.setframerate(RATE)
-        wf.writeframes(audio_bytes)
-    buffer.seek(0)
-
-    try:
-        url = f"{settings.whisper_host}:{settings.whisper_port}/v1/audio/transcriptions"
-        files = {"file": ("audio.wav", buffer, "audio/wav")}
-        data = {"model": settings.whisper_model}
-        headers = {}
-        if settings.api_token:
-            headers["Authorization"] = f"Bearer {settings.api_token.get_secret_value()}"
-
-        response = requests.post(
-            url, files=files, data=data, headers=headers, timeout=15
-        )
-
-        if response.ok:
-            return response.json().get("text", "")
-        else:
-            logger.error(f"STT API Error: {response.status_code} - {response.text}")
-    except Exception as e:
-        logger.error(f"Failed to connect to STT API: {e}")
-    return ""
-
-
-def send_to_orchestrator(text: str):
-    logger.debug(f"Sending to Orchestrator...")
-    payload = {"text": text, "room": settings.room}
-    headers = {}
-    if settings.api_token:
-        headers["Authorization"] = f"Bearer {settings.api_token.get_secret_value()}"
-
-    try:
-        response = requests.post(
-            settings.orchestrator_url, json=payload, headers=headers
-        )
-        if response.ok:
-            data = response.json()
-            audio_b64 = data.get("audio_b64")
-            if audio_b64:
-                play_audio_from_b64(audio_b64)
-        else:
-            logger.error(f"Orchestrator Error: {response.status_code}")
-    except Exception as e:
-        logger.error(f"Orchestrator Connection Failed: {e}")
-
-
 def record_until_silence(
     mic_stream, vad_model: SileroVAD, max_seconds=10, silence_timeout=1.5
 ):
@@ -293,14 +284,16 @@ def main():
 
                 # --- PROCESSING ---
                 if len(audio_recorded) > 0:
-                    transcribed_text = transcribe_audio_api(audio_recorded)
-
-                    if transcribed_text.strip():
-                        logger.info(f"Transcribed: {transcribed_text}")
-                        play_local_wav(settings.done_sound)
-                        send_to_orchestrator(transcribed_text)
-                    else:
-                        logger.info("No text transcribed.")
+                    play_local_wav(settings.done_sound)
+                    response = orchestrator_client.send_audio_to_process(audio_recorded)
+                    if response:
+                        if response.status == "empty":
+                            logger.info("Empty transcript")
+                        elif response.status == "success":
+                            if response.actions:
+                                handle_satellite_actions(response.actions)
+                            if response.audio_b64:
+                                play_audio_from_b64(response.audio_b64)
 
                 # Reset models for the next interaction
                 owwModel.reset()

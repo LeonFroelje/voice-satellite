@@ -38,5 +38,6 @@ py-modules = [
     "config",
     "stt_client",
     "verify_audio",
-    "download_models"
+    "download_models",
+    "orchestrator_client"
 ]

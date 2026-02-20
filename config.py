@@ -9,11 +9,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class SatelliteSettings(BaseSettings):
     # --- Orchestrator Connection ---
-    orchestrator_url: str = Field(
-        default="http://localhost:8000/process",
-        description="Full URL to the Orchestrator's processing endpoint",
+    orchestrator_host: str = Field(
+        default="localhost",
+        description="The Hostname or ip address of the orchestrator",
     )
-    api_token: Optional[SecretStr] = Field(
+    orchestrator_port: int = Field(
+        default=8000, description="The port of the orchestrator api"
+    )
+    orchestrator_protocol: str = Field(default="http", description="http or https")
+    orchestrator_token: Optional[SecretStr] = Field(
         default=None,
         description="Bearer token for authenticating with the Orchestrator",
     )
@@ -48,16 +52,6 @@ class SatelliteSettings(BaseSettings):
     room: Optional[str] = Field(
         default=None,
         description="The physical location of this satellite (sent to Orchestrator for context)",
-    )
-    whisper_host: str = Field(
-        default="localhost", description="Hostname or IP of the Whisper-Live server"
-    )
-    whisper_port: int = Field(
-        default=9090, description="Port of the Whisper-Live server"
-    )
-    whisper_model: str = Field(
-        default="small",
-        description="Whisper model size (tiny, base, small, medium, large-v2, etc.)",
     )
     language: str = Field(
         default="de", description="Language code for STT (e.g., 'en', 'de', 'es')"
