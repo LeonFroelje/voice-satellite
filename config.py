@@ -1,7 +1,10 @@
 import argparse
+import os
 from typing import Optional
 from pydantic import SecretStr, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class SatelliteSettings(BaseSettings):
@@ -61,11 +64,11 @@ class SatelliteSettings(BaseSettings):
     log_level: str = "INFO"
     # --- Sound Effects ---
     wake_sound: Optional[str] = Field(
-        default="./assets/sounds/meow.wav",
+        default=os.path.join(BASE_DIR, "assets", "sounds", "meow.wav"),
         description="Path to WAV file to play when wakeword is detected",
     )
     done_sound: Optional[str] = Field(
-        default="./assets/sounds/meow.wav",
+        default=os.path.join(BASE_DIR, "assets", "sounds", "meow.wav"),
         description="Path to WAV file to play when processing is finished",
     )
     # Pydantic Config: Tells it to read from .env files automatically

@@ -41,6 +41,10 @@
           url = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx";
           hash = "sha256-uisOD4t7h1NposicsTNg/1O6xDbyiVzO2fR5+mXrF28=";
         };
+        silero_vad = pkgs.fetchurl {
+          url = "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx";
+          hash = "sha256-GhU6IvRQnikqlOZ9b5uF6N6yW0mIaCt+F0xlJ52HiOM";
+        };
       };
       # OpenWakeWord is not in nixpkgs, so we package it here.
       # Note: We stripped tflite-runtime as discussed.
@@ -74,8 +78,10 @@
           cp ${models.melspectrogram} "$TARGET_DIR/melspectrogram.onnx"
           cp ${models.alexa} "$TARGET_DIR/alexa_v0.1.onnx"
 
+
           # List files to verify in build logs
           ls -R "$out/${python.sitePackages}/openwakeword"
+          # Copy assets
         '';
         propagatedBuildInputs = with python.pkgs; [
           onnxruntime
@@ -108,7 +114,6 @@
         python-dotenv
         certifi
         tqdm
-        websocket-client
       ];
 
     in
@@ -128,6 +133,12 @@
           nativeBuildInputs = [ pkgs.makeWrapper ];
 
           postInstall = ''
+            mkdir -p $out/${python.sitePackages}/assets
+            mkdir $out/${python.sitePackages}/assets/models
+            cp ${models.silero_vad} $out/${python.sitePackages}/assets/models/silero_vad.onnx
+            if [ -d "./assets/" ]; then
+              cp -r ./assets/* $out/${python.sitePackages}/assets/
+            fi
             wrapProgram $out/bin/voice-satellite \
               --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.ffmpeg_7-headless ]}
           '';
@@ -181,6 +192,16 @@
               default = 0.5;
               description = "Voice Activity Detection sensitivity.";
             };
+            wakeSound = mkOption {
+              type = types.nullOr types.path;
+              default = null; # The script will use its own internal default if null
+              description = "Path to the WAV file for wakeword detection.";
+            };
+            doneSound = mkOption {
+              type = types.nullOr types.path;
+              default = null;
+              description = "Path to the WAV file for transcription finished.";
+            };
           };
 
           # Ensure the logic uses 'cfg.package' in ExecStart
@@ -221,6 +242,8 @@
                 WAKEWORD_MODEL = cfg.settings.wakewordModel;
                 VAD_THRESHOLD = toString cfg.settings.vadThreshold;
                 MIC_INDEX = lib.mkIf (cfg.settings.micDeviceIndex != null) (toString cfg.settings.micDeviceIndex);
+                WAKE_SOUND = lib.mkIf (cfg.wakeSound != null) (toString cfg.wakeSound);
+                DONE_SOUND = lib.mkIf (cfg.doneSound != null) (toString cfg.doneSound);
 
                 PYTHONUNBUFFERED = "1";
               };

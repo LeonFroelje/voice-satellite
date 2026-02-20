@@ -56,7 +56,8 @@ def play_local_wav(file_path):
 # --- Silero VAD ONNX Wrapper ---
 def ensure_silero_vad_model():
     """Downloads the lightweight Silero VAD ONNX model if it's not present locally."""
-    model_path = "silero_vad.onnx"
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(BASE_DIR, "assets", "models", "silero_vad.onnx")
     if not os.path.exists(model_path):
         logger.info("Downloading Silero VAD ONNX model (~1.8MB)...")
         url = "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
