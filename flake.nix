@@ -316,7 +316,7 @@
                 "network.target"
                 "sound.target"
               ];
-              unitConfig.ConditionUser = "satellite";
+              # unitConfig.ConditionUser = "satellite";
               serviceConfig = {
                 ExecStart = "${cfg.package}/bin/voice-satellite";
                 EnvironmentFile = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
