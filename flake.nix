@@ -130,7 +130,10 @@
 
           # Runtime Dependencies (Binaries)
           # We need to ensure 'ffmpeg' is in the PATH for pydub to find it
-          nativeBuildInputs = [ pkgs.makeWrapper ];
+          nativeBuildInputs = [
+            pkgs.makeWrapper
+            pkgs.alsa-util
+          ];
 
           postInstall = ''
             mkdir -p $out/${python.sitePackages}/assets
