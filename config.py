@@ -35,7 +35,8 @@ class SatelliteSettings(BaseSettings):
         default="alexa", description="Comma-separated list of wakeword models to load"
     )
     output_delay: Optional[int] = Field(
-        default=1, description="The delay for TTS audio output stream in seconds"
+        default=1000,
+        description="The delay for TTS audio output stream in milliseconds",
     )
     silence_timeout: int = Field(
         default=2,

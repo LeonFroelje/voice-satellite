@@ -40,7 +40,19 @@ def _play_normalized_audio(audio_segment: AudioSegment):
     normalized_audio = audio_segment.set_frame_rate(OUTPUT_RATE).set_channels(
         OUTPUT_CHANNELS
     )
+    if (
+        hasattr(settings, "output_delay")
+        and settings.output_delay
+        and settings.output_delay > 0
+    ):
+        delay_ms = int(settings.output_delay)
+        # Generate pure silence
+        silence = AudioSegment.silent(duration=delay_ms, frame_rate=OUTPUT_RATE)
+        # Ensure the silence strictly matches our channels to prevent concatenation errors
+        silence = silence.set_channels(OUTPUT_CHANNELS)
 
+        # Prepend the silence to the actual audio
+        normalized_audio = silence + normalized_audio
     try:
         # 2. Open the stream if it doesn't exist, locked to the Master Format
         if speaker_stream is None:
