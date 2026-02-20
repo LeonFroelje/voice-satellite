@@ -157,8 +157,8 @@
         in
         {
           options.services.voice-satellite = with lib; {
-            enable = lib.mkEnableOption "Voice Assistant Satellite";
-            package = lib.mkOption {
+            enable = mkEnableOption "Voice Assistant Satellite";
+            package = mkOption {
               type = types.package;
               default = defaultPkg;
               description = "The satellite package to use.";
@@ -166,18 +166,31 @@
             environmentFile = mkOption {
               type = types.nullOr types.path;
               default = null;
-              description = "Path to an environment file for secrets (e.g., SAT_API_TOKEN).";
+              description = "Path to an environment file for secrets (e.g., SAT_ORCHESTRATOR_TOKEN).";
             };
 
-            # --- Orchestrator ---
-            orchestratorUrl = mkOption {
+            # --- Orchestrator Connection ---
+            orchestratorHost = mkOption {
               type = types.str;
-              default = "http://localhost:8000/process";
-              description = "Full URL to the Orchestrator's processing endpoint.";
+              default = "localhost";
+              description = "The Hostname or IP address of the orchestrator.";
+            };
+            orchestratorPort = mkOption {
+              type = types.int;
+              default = 8000;
+              description = "The port of the orchestrator API.";
+            };
+            orchestratorProtocol = mkOption {
+              type = types.enum [
+                "http"
+                "https"
+              ];
+              default = "http";
+              description = "Protocol to use for the orchestrator.";
             };
 
             # --- Audio Settings ---
-            micDeviceIndex = mkOption {
+            micIndex = mkOption {
               type = types.nullOr types.int;
               default = null;
               description = "The index of the microphone device.";
@@ -213,26 +226,11 @@
               description = "Silence duration in seconds before stopping recording.";
             };
 
-            # --- Context & STT ---
+            # --- Context & Language ---
             room = mkOption {
               type = types.nullOr types.str;
               default = null;
               description = "Physical location of this satellite.";
-            };
-            whisperHost = mkOption {
-              type = types.str;
-              default = "localhost";
-              description = "Hostname or IP of the Whisper-Live server.";
-            };
-            whisperPort = mkOption {
-              type = types.int;
-              default = 9090;
-              description = "Port of the Whisper-Live server.";
-            };
-            whisperModel = mkOption {
-              type = types.str;
-              default = "small";
-              description = "Whisper model size (tiny, base, small, etc.).";
             };
             language = mkOption {
               type = types.str;
@@ -274,48 +272,44 @@
               ];
 
               serviceConfig = {
-                User = "root";
-                Group = "root";
-                # 2. Points to your user's PipeWire socket
-                # Environment = [
-                #   "XDG_RUNTIME_DIR=/run/user/1000" # Check 'id -u tv' to confirm this is 1000
-                # ];
-
                 ExecStart = "${cfg.package}/bin/voice-satellite";
+                EnvironmentFile = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
 
-                # 3. Disable all sandboxing for now
+                # Permissions & User
+                User = "root"; # Change to a dynamic user if PipeWire/ALSA access is configured
+                Group = "root";
+
+                # Performance/Logging
+                PYTHONUNBUFFERED = "1";
+                Restart = "on-failure";
+                RestartSec = "5s";
+
+                # Sandbox Settings (Keeping your requested defaults)
                 DynamicUser = false;
                 ProtectSystem = "none";
                 ProtectHome = "no";
                 PrivateTmp = false;
-
-                # 4. Restart on failure for easier testing
-                Restart = "on-failure";
-                RestartSec = "5s";
               };
 
-              # Map all variables
+              # Mapping Nix options to SAT_ Environment Variables
               environment =
                 let
                   env = {
-                    SAT_ORCHESTRATOR_URL = cfg.orchestratorUrl;
-                    SAT_MIC_INDEX = if cfg.micDeviceIndex != null then toString cfg.micDeviceIndex else null;
-                    SAT_SPEAKER_INDEX = if cfg.speakerIndex != null then toString cfg.speakerIndex else null; # Fixed name sync
+                    SAT_ORCHESTRATOR_HOST = cfg.orchestratorHost;
+                    SAT_ORCHESTRATOR_PORT = toString cfg.orchestratorPort;
+                    SAT_ORCHESTRATOR_PROTOCOL = cfg.orchestratorProtocol;
+                    SAT_MIC_INDEX = if cfg.micIndex != null then toString cfg.micIndex else null;
+                    SAT_SPEAKER_INDEX = if cfg.speakerIndex != null then toString cfg.speakerIndex else null;
                     SAT_WAKEWORD_THRESHOLD = toString cfg.wakewordThreshold;
                     SAT_WAKEWORD_MODELS = cfg.wakewordModels;
                     SAT_OUTPUT_DELAY = toString cfg.outputDelay;
                     SAT_OUTPUT_CHANNELS = toString cfg.outputChannels;
                     SAT_SILENCE_TIMEOUT = toString cfg.silenceTimeout;
                     SAT_ROOM = cfg.room;
-                    SAT_WHISPER_HOST = cfg.whisperHost;
-                    SAT_WHISPER_PORT = toString cfg.whisperPort;
-                    SAT_WHISPER_MODEL = cfg.whisperModel;
                     SAT_LANGUAGE = cfg.language;
                     SAT_LOG_LEVEL = cfg.logLevel;
                     SAT_WAKE_SOUND = if cfg.wakeSound != null then toString cfg.wakeSound else null;
                     SAT_DONE_SOUND = if cfg.doneSound != null then toString cfg.doneSound else null;
-
-                    PYTHONUNBUFFERED = "1";
                   };
                 in
                 lib.filterAttrs (n: v: v != null) env;
