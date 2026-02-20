@@ -53,8 +53,7 @@ def handle_satellite_actions(actions):
             # Use ALSA amixer to set the volume on Card 3 (your Teufel speaker)
             # Note: "PCM" or "Master" depends on how ALSA names your specific speaker's control.
             # You can find the exact control name by running 'amixer -c 3 scontrols' in your terminal.
-            os.system(f"amixer -c 3 set PCM {level}%")
-
+            os.system(f"amixer set Master {level}%")
         # --- TIMER CONTROL ---
         elif action.type == "start_timer":
             duration = action.payload.get("duration_seconds", 0)
