@@ -132,7 +132,7 @@
           # We need to ensure 'ffmpeg' is in the PATH for pydub to find it
           nativeBuildInputs = [
             pkgs.makeWrapper
-            pkgs.alsa-util
+            pkgs.alsa-utils
           ];
 
           postInstall = ''
