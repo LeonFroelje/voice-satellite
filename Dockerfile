@@ -57,6 +57,7 @@ RUN chmod -R 755 /app/assets/sounds
 # instead of relying on ENV PATH, we point directly to the python binary
 # that contains your libraries.
 USER appuser
+RUN mkdir -p /app/assets/models
 
 # USER root
 CMD ["/opt/venv/bin/python", "main.py"]
