@@ -38,9 +38,7 @@ class SatelliteSettings(BaseSettings):
         default=1000,
         description="The delay for TTS audio output stream in milliseconds",
     )
-    output_channels: Optional[int] = Field(
-        default=1, description="The number of output channels"
-    )
+    output_channels: int = Field(default=1, description="The number of output channels")
     silence_timeout: int = Field(
         default=2,
         description="The silence duration in seconds after which command recording should stop",
