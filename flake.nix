@@ -265,44 +265,43 @@
 
           config = lib.mkIf cfg.enable {
             systemd.services.voice-satellite = {
-              # ... (Keep existing description, wantedBy, after)
+              description = "Voice Assistant Satellite Service";
+              wantedBy = [ "multi-user.target" ];
+              after = [
+                "network.target"
+                "sound.target"
+                "pipewire.service"
+              ];
 
               serviceConfig = {
-                ExecStart = "${cfg.package}/bin/voice-satellite";
-                EnvironmentFile = lib.mkIf (cfg.environmentFile != null) cfg.environmentFile;
+                # 1. Run as your primary user to access PipeWire
+                User = "tv";
 
-                # Audio & Hardware Permissions
-                SupplementaryGroups = [ "audio" ];
-                DeviceAllow = [ "/dev/snd" ];
-                DevicePolicy = "closed";
-                DynamicUser = true;
-                BindReadOnlyPaths = [
-                  "/dev/snd"
-                  "/etc/asound.conf"
-                  "/usr/share/alsa"
-                  "/var/lib/alsa"
-                  "/proc/asound" # Crucial for card enumeration
-                  "/sys/class/sound" # Crucial for card enumeration
+                # 2. Points to your user's PipeWire socket
+                Environment = [
+                  "XDG_RUNTIME_DIR=/run/user/1000" # Check 'id -u tv' to confirm this is 1000
                 ];
-                # Performance
-                CPUSchedulingPolicy = "fifo";
-                CPUSchedulingPriority = 50;
 
-                # Security
-                ProtectSystem = "strict";
-                ProtectHome = true;
-                PrivateTmp = true;
-                RuntimeDirectory = "voice-satellite";
+                ExecStart = "${cfg.package}/bin/voice-satellite";
+
+                # 3. Disable all sandboxing for now
+                DynamicUser = false;
+                ProtectSystem = "none";
+                ProtectHome = "no";
+                PrivateTmp = false;
+
+                # 4. Restart on failure for easier testing
+                Restart = "on-failure";
+                RestartSec = "5s";
               };
 
-              # Map all variables to the SAT_ prefix for Pydantic
+              # Map all variables
               environment =
                 let
-                  # Helper to filter out nulls so Pydantic uses its own defaults if Nix is null
                   env = {
                     SAT_ORCHESTRATOR_URL = cfg.orchestratorUrl;
                     SAT_MIC_INDEX = if cfg.micDeviceIndex != null then toString cfg.micDeviceIndex else null;
-                    SAT_SPEAKER_INDEX = if cfg.speakerIndex != null then toString cfg.speakerIndex else null;
+                    SAT_SPEAKER_INDEX = if cfg.speaker_index != null then toString cfg.speaker_index else null; # Fixed name sync
                     SAT_WAKEWORD_THRESHOLD = toString cfg.wakewordThreshold;
                     SAT_WAKEWORD_MODELS = cfg.wakewordModels;
                     SAT_OUTPUT_DELAY = toString cfg.outputDelay;
