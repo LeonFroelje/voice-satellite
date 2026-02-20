@@ -169,91 +169,150 @@
               description = "Path to an environment file for secrets (e.g., SAT_API_TOKEN).";
             };
 
+            # --- Orchestrator ---
             orchestratorUrl = mkOption {
               type = types.str;
-              default = "http://localhost:8000/process"; # Matched default in settings.py
-              description = "The URL of the Voice Assistant Orchestrator.";
+              default = "http://localhost:8000/process";
+              description = "Full URL to the Orchestrator's processing endpoint.";
             };
 
-            # Split Whisper URL into Host and Port to match Pydantic fields
-            whisperHost = mkOption {
-              type = types.str;
-              default = "localhost";
-              description = "Hostname of the whisper-live server.";
-            };
-            whisperPort = mkOption {
-              type = types.int;
-              default = 9090;
-              description = "Port of the whisper-live server.";
-            };
-
+            # --- Audio Settings ---
             micDeviceIndex = mkOption {
               type = types.nullOr types.int;
               default = null;
-              description = "Optional specific PortAudio device index for the microphone.";
+              description = "The index of the microphone device.";
             };
-
+            speakerIndex = mkOption {
+              type = types.nullOr types.int;
+              default = null;
+              description = "The index of the output device.";
+            };
+            wakewordThreshold = mkOption {
+              type = types.float;
+              default = 0.6;
+              description = "Sensitivity (0.0-1.0). Higher = fewer false positives.";
+            };
             wakewordModels = mkOption {
               type = types.str;
               default = "alexa";
               description = "Comma-separated list of wakeword models to load.";
             };
-
-            wakewordThreshold = mkOption {
-              type = types.float;
-              default = 0.6;
-              description = "Sensitivity (0.0-1.0).";
+            outputDelay = mkOption {
+              type = types.int;
+              default = 1000;
+              description = "The delay for TTS audio output stream in milliseconds.";
+            };
+            outputChannels = mkOption {
+              type = types.int;
+              default = 1;
+              description = "The number of output channels.";
+            };
+            silenceTimeout = mkOption {
+              type = types.int;
+              default = 2;
+              description = "Silence duration in seconds before stopping recording.";
             };
 
+            # --- Context & STT ---
             room = mkOption {
               type = types.nullOr types.str;
               default = null;
-              description = "Name of the room the satellite is placed in.";
+              description = "Physical location of this satellite.";
+            };
+            whisperHost = mkOption {
+              type = types.str;
+              default = "localhost";
+              description = "Hostname or IP of the Whisper-Live server.";
+            };
+            whisperPort = mkOption {
+              type = types.int;
+              default = 9090;
+              description = "Port of the Whisper-Live server.";
+            };
+            whisperModel = mkOption {
+              type = types.str;
+              default = "small";
+              description = "Whisper model size (tiny, base, small, etc.).";
+            };
+            language = mkOption {
+              type = types.str;
+              default = "de";
+              description = "Language code for STT (e.g., 'en', 'de').";
             };
 
+            # --- System & Sounds ---
+            logLevel = mkOption {
+              type = types.enum [
+                "DEBUG"
+                "INFO"
+                "WARNING"
+                "ERROR"
+              ];
+              default = "INFO";
+              description = "Logging level.";
+            };
             wakeSound = mkOption {
               type = types.nullOr types.path;
               default = null;
-              description = "Path to the WAV file for wakeword detection.";
+              description = "Path to WAV file for wakeword detection.";
             };
-
             doneSound = mkOption {
               type = types.nullOr types.path;
               default = null;
-              description = "Path to the WAV file for transcription finished.";
+              description = "Path to WAV file for processing finished.";
             };
           };
 
           config = lib.mkIf cfg.enable {
             systemd.services.voice-satellite = {
-              # ... (Keep your existing description, after, and wantedBy)
+              # ... (Keep existing description, wantedBy, after)
 
               serviceConfig = {
                 ExecStart = "${cfg.package}/bin/voice-satellite";
                 EnvironmentFile = lib.mkIf (cfg.environmentFile != null) cfg.environmentFile;
 
-                # Audio permissions
+                # Audio & Hardware Permissions
                 SupplementaryGroups = [ "audio" ];
                 DeviceAllow = [ "/dev/snd" ];
                 DevicePolicy = "closed";
                 DynamicUser = true;
-                # ... (Rest of your hardening)
+
+                # Performance
+                CPUSchedulingPolicy = "fifo";
+                CPUSchedulingPriority = 50;
+
+                # Security
+                ProtectSystem = "strict";
+                ProtectHome = true;
+                PrivateTmp = true;
               };
 
-              # Map Nix options to SAT_ prefixed environment variables
-              environment = lib.filterAttrs (n: v: v != null) {
-                SAT_ORCHESTRATOR_URL = cfg.orchestratorUrl;
-                SAT_ROOM = cfg.room;
-                SAT_WHISPER_HOST = cfg.whisperHost;
-                SAT_WHISPER_PORT = toString cfg.whisperPort;
-                SAT_WAKEWORD_MODELS = cfg.wakewordModels;
-                SAT_WAKEWORD_THRESHOLD = toString cfg.wakewordThreshold;
-                SAT_MIC_INDEX = if (cfg.micDeviceIndex != null) then toString cfg.micDeviceIndex else null;
-                SAT_WAKE_SOUND = if (cfg.wakeSound != null) then toString cfg.wakeSound else null;
-                SAT_DONE_SOUND = if (cfg.doneSound != null) then toString cfg.doneSound else null;
+              # Map all variables to the SAT_ prefix for Pydantic
+              environment =
+                let
+                  # Helper to filter out nulls so Pydantic uses its own defaults if Nix is null
+                  env = {
+                    SAT_ORCHESTRATOR_URL = cfg.orchestratorUrl;
+                    SAT_MIC_INDEX = if cfg.micDeviceIndex != null then toString cfg.micDeviceIndex else null;
+                    SAT_SPEAKER_INDEX = if cfg.speakerIndex != null then toString cfg.speakerIndex else null;
+                    SAT_WAKEWORD_THRESHOLD = toString cfg.wakewordThreshold;
+                    SAT_WAKEWORD_MODELS = cfg.wakewordModels;
+                    SAT_OUTPUT_DELAY = toString cfg.outputDelay;
+                    SAT_OUTPUT_CHANNELS = toString cfg.outputChannels;
+                    SAT_SILENCE_TIMEOUT = toString cfg.silenceTimeout;
+                    SAT_ROOM = cfg.room;
+                    SAT_WHISPER_HOST = cfg.whisperHost;
+                    SAT_WHISPER_PORT = toString cfg.whisperPort;
+                    SAT_WHISPER_MODEL = cfg.whisperModel;
+                    SAT_LANGUAGE = cfg.language;
+                    SAT_LOG_LEVEL = cfg.logLevel;
+                    SAT_WAKE_SOUND = if cfg.wakeSound != null then toString cfg.wakeSound else null;
+                    SAT_DONE_SOUND = if cfg.doneSound != null then toString cfg.doneSound else null;
 
-                PYTHONUNBUFFERED = "1";
-              };
+                    PYTHONUNBUFFERED = "1";
+                  };
+                in
+                lib.filterAttrs (n: v: v != null) env;
             };
           };
         };
