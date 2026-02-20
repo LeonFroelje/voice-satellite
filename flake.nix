@@ -280,13 +280,14 @@
               # Crucial: Boots a background user session (and PipeWire) on startup
               linger = true;
             };
-            systemd.services.squeezelite = lib.mkIf cfg.configureSqueezelite {
+            systemd.user.services.squeezelite = lib.mkIf cfg.configureSqueezelite {
               description = "Squeezelite Service (PulseAudio)";
-              wantedBy = [ "multi-user.target" ];
+              wantedBy = [ "default.target" ];
               after = [
                 "network.target"
                 "sound.target"
               ];
+              unitConfig.ConditionUser = "satellite";
               # unitConfig.ConditionUser = "satellite";
               serviceConfig = {
                 User = "satellite";
@@ -298,7 +299,6 @@
                 RestartSec = "3s";
 
                 # %U is a systemd specifier that dynamically resolves to the UID of the 'satellite' user
-                Environment = "PULSE_SERVER=unix:/run/user/%U/pulse/native";
               };
             };
             services.pipewire = {
@@ -309,13 +309,14 @@
               wireplumber.enable = true;
             };
             security.rtkit.enable = true;
-            systemd.services.voice-satellite = {
+            systemd.user.services.voice-satellite = {
               description = "Voice Assistant Satellite Service";
-              wantedBy = [ "multi-user.target" ];
+              wantedBy = [ "default.target" ];
               after = [
                 "network.target"
                 "sound.target"
               ];
+              unitConfig.ConditionUser = "satellite";
               # unitConfig.ConditionUser = "satellite";
               serviceConfig = {
                 ExecStart = "${cfg.package}/bin/voice-satellite";
@@ -325,7 +326,6 @@
                 SupplementaryGroups = [ "audio" ];
 
                 # Connect to PipeWire if configured, otherwise fall back to raw ALSA
-                Environment = "PULSE_SERVER=unix:/run/user/%U/pulse/native";
 
                 Restart = "always";
                 RestartSec = "3s";
