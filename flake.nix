@@ -77,6 +77,7 @@
           cp ${models.embedding} "$TARGET_DIR/embedding_model.onnx"
           cp ${models.melspectrogram} "$TARGET_DIR/melspectrogram.onnx"
           cp ${models.alexa} "$TARGET_DIR/alexa_v0.1.onnx"
+          cp ${models.silero_vad} "$TARGET_DIR/silero_vad.onnx"
 
 
           # List files to verify in build logs

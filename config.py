@@ -79,8 +79,10 @@ def get_settings() -> SatelliteSettings:
     parser = argparse.ArgumentParser(description="Voice Assistant Satellite")
 
     # Add arguments for every field you want controllable via CLI
-    parser.add_argument("--orchestrator-url", help="URL of the Orchestrator API")
-    parser.add_argument("--api-token", help="API Token for Orchestrator")
+    parser.add_argument("--orchestrator-host")
+    parser.add_argument("--orchestrator-protocol")
+    parser.add_argument("--orchestrator-port")
+    parser.add_argument("--orchestrator-token", help="API Token for Orchestrator")
 
     parser.add_argument("--mic-index", type=int, help="Microphone Device Index")
     parser.add_argument("--speaker-index", help="Index of output device")
@@ -88,9 +90,6 @@ def get_settings() -> SatelliteSettings:
         "--wakeword-threshold", type=float, help="Wakeword sensitivity (0.0-1.0)"
     )
     parser.add_argument("--silence-timeout", help="VAD silence timeout")
-    parser.add_argument("--whisper-host", help="Whisper server host")
-    parser.add_argument("--whisper-port", type=int, help="Whisper server port")
-    parser.add_argument("--whisper-model", help="Whisper model size")
     parser.add_argument("--language", help="Language code (en, de, etc.)")
     parser.add_argument("--room", help="Room name (e.g., kitchen, bedroom)")
     parser.add_argument("--log-level", help="Logging Level (DEBUG, INFO)")

@@ -238,7 +238,10 @@ def record_until_silence(
 
 def main():
     # 1. Initialize Models
-    owwModel = Model(wakeword_models=[settings.wakeword_models])
+    owwModel = Model(
+        wakeword_models=[settings.wakeword_models],
+        # vad_threshold=0.5,
+    )
 
     model_path = ensure_silero_vad_model()
     silero_vad = SileroVAD(model_path)
