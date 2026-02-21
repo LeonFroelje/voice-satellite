@@ -1,4 +1,5 @@
 import pyaudio
+import collections
 import os
 import threading
 import time
@@ -198,49 +199,65 @@ def play_audio_from_b64(b64_string):
 
 
 def record_until_silence(
-    mic_stream, vad_model: SileroVAD, max_seconds=10, silence_timeout=1.5
+    mic_stream, vad_model: SileroVAD, max_seconds=15, silence_timeout=3.0
 ):
     """
-    Records audio using Silero VAD.
-    Stops if silence is detected, max_seconds is reached, or no initial speech is heard.
+    Records audio and actively trims out prolonged silences on the fly.
+    Allows the user to pause and think without bloating the payload.
     """
     logger.info("Listening for command...")
     vad_model.reset_states()
 
-    frames = []
-    SILERO_CHUNK = 512  # Silero strictly prefers 512 samples for 16kHz (32ms chunk)
+    SILERO_CHUNK = 512
 
     start_time = time.time()
     last_speech_time = time.time()
     has_spoken = False
 
+    processed_frames = []
+
+    # Ring buffer holds ~320ms of audio (10 chunks of 32ms) to catch word beginnings
+    ring_buffer = collections.deque(maxlen=10)
+
+    # How long to keep recording AFTER speech stops before dropping frames
+    hangover_time = 0.5
+
     while (time.time() - start_time) < max_seconds:
         data = mic_stream.read(SILERO_CHUNK, exception_on_overflow=False)
-        frames.append(data)
-
         speech_prob = vad_model.process(data, RATE)
         current_time = time.time()
 
-        if speech_prob > 0.5:  # 50% threshold is ideal for Silero
+        # Using a slightly lower threshold (0.3) helps catch softer speech at word boundaries
+        if speech_prob > 0.3:
             last_speech_time = current_time
             has_spoken = True
 
+        # If we are within the hangover/active window, keep the audio
+        if has_spoken and (current_time - last_speech_time) < hangover_time:
+            # Flush the pre-speech ring buffer if it has data
+            while ring_buffer:
+                processed_frames.append(ring_buffer.popleft())
+            processed_frames.append(data)
+        else:
+            # We are in silence. Keep a rolling window of audio just in case they start speaking again.
+            # These frames are dropped if the silence timeout is eventually reached.
+            ring_buffer.append(data)
+
         # Stopping conditions
         if has_spoken and (current_time - last_speech_time) > silence_timeout:
-            logger.debug("Silence detected, finalizing recording.")
+            logger.debug("Command finished. Finalizing recording.")
             break
         elif not has_spoken and (current_time - start_time) > 3.0:
             logger.debug("No initial speech detected within 3 seconds, aborting.")
             break
 
-    return b"".join(frames)
+    return b"".join(processed_frames)
 
 
 def main():
     # 1. Initialize Models
     owwModel = Model(
         wakeword_models=[settings.wakeword_models],
-        # vad_threshold=0.5,
     )
 
     model_path = ensure_silero_vad_model()
@@ -260,6 +277,10 @@ def main():
     mic_stream = safe_open_stream()
     logger.info(f"Satellite started. Room: {settings.room}")
 
+    recent_speech_time = 0
+    VAD_GATE_TIMEOUT = (
+        settings.silence_timeout
+    )  # Ignore wakewords if no speech was heard in the last 1.5s
     try:
         while True:
             # --- WAKEWORD DETECTION LOOP ---
@@ -269,35 +290,50 @@ def main():
             except OSError:
                 mic_stream = safe_open_stream()
                 continue
+            vad_audio = audio_data[-1024:]
+            speech_prob = silero_vad.process(vad_audio, RATE)
+
+            if speech_prob > 0.5:
+                recent_speech_time = time.time()
 
             audio_np = np.frombuffer(audio_data, dtype=np.int16)
             prediction = owwModel.predict(audio_np)
 
             if prediction[settings.wakeword_models] >= settings.wakeword_threshold:
-                logger.info(
-                    f"Wake Word Detected! (Confidence: {prediction[settings.wakeword_models]:.2f})"
-                )
-                play_local_wav(settings.wake_sound)
+                is_speech_recent = (
+                    time.time() - recent_speech_time
+                ) <= VAD_GATE_TIMEOUT
+                if is_speech_recent:
+                    logger.info(
+                        f"Wake Word Detected! (Confidence: {prediction[settings.wakeword_models]:.2f})"
+                    )
+                    play_local_wav(settings.wake_sound)
 
-                # --- COMMAND RECORDING LOOP ---
-                audio_recorded = record_until_silence(
-                    mic_stream, silero_vad, silence_timeout=settings.silence_timeout
-                )
+                    # --- COMMAND RECORDING LOOP ---
+                    audio_recorded = record_until_silence(
+                        mic_stream, silero_vad, silence_timeout=settings.silence_timeout
+                    )
 
-                # --- PROCESSING ---
-                if len(audio_recorded) > 0:
-                    play_local_wav(settings.done_sound)
-                    response = orchestrator_client.send_audio_to_process(audio_recorded)
-                    if response:
-                        if response.status == "empty":
-                            logger.info("Empty transcript")
-                        elif response.status == "success":
-                            if response.actions:
-                                handle_satellite_actions(response.actions)
-                            if response.audio_b64:
-                                play_audio_from_b64(response.audio_b64)
+                    # --- PROCESSING ---
+                    if len(audio_recorded) > 0:
+                        play_local_wav(settings.done_sound)
+                        response = orchestrator_client.send_audio_to_process(
+                            audio_recorded
+                        )
+                        if response:
+                            if response.status == "empty":
+                                logger.info("Empty transcript")
+                            elif response.status == "success":
+                                if response.actions:
+                                    handle_satellite_actions(response.actions)
+                                if response.audio_b64:
+                                    play_audio_from_b64(response.audio_b64)
 
-                # Reset models for the next interaction
+                    else:
+                        logger.debug(
+                            f"VAD Blocked False Positive (Confidence: {prediction[settings.wakeword_models]:.2f})"
+                        )
+                    # Reset models for the next interaction
                 owwModel.reset()
                 logger.info("Listening for wakeword...")
 
