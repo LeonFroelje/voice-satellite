@@ -30,7 +30,7 @@ def main():
     
     orchestrator_client = OrchestratorClient(
         settings.orchestrator_host, settings.orchestrator_port,
-        settings.orchestrator_token, settings.orchestrator_protocol, audio_manager 
+        settings.orchestrator_token, audio_manager, settings.orchestrator_protocol
     )
 
     owwModel = Model(wakeword_models=[settings.wakeword_models])
