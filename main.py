@@ -263,28 +263,6 @@ def record_until_silence(
             logger.debug("No initial speech detected within 3 seconds, aborting.")
             break
 
-    # --- DEBUG: Write the entire raw mic capture to a file ---
-    try:
-        # debug_filepath = os.path.join(os.path.dirname(__file__), "debug_raw_mic.wav")
-        debug_filepath = "./debug.wav"
-        with wave.open(debug_filepath, "wb") as wf:
-            wf.setnchannels(CHANNELS)
-            # PyAudio format paInt16 is 2 bytes wide
-            wf.setsampwidth(audio_manager.get_sample_size(FORMAT))
-            wf.setframerate(RATE)
-            wf.writeframes(b"".join(raw_debug_frames))
-        logger.info(f"Saved raw mic debug audio to {debug_filepath}")
-        debug_filepath = "./debug2.wav"
-        with wave.open(debug_filepath, "wb") as wf:
-            wf.setnchannels(CHANNELS)
-            # PyAudio format paInt16 is 2 bytes wide
-            wf.setsampwidth(audio_manager.get_sample_size(FORMAT))
-            wf.setframerate(RATE)
-            wf.writeframes(b"".join(processed_frames))
-        logger.info(f"Saved processed mic debug audio to {debug_filepath}")
-    except Exception as e:
-        logger.error(f"Failed to write debug wav: {e}")
-
     return b"".join(processed_frames)
 
 
