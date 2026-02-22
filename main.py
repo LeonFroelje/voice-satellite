@@ -198,6 +198,23 @@ def play_audio_from_b64(b64_string):
     except Exception as e:
         logger.error(f"Failed to load base64 audio: {e}")
 
+def notify_orchestrator_wakeword():
+    """Tells the orchestrator to duck the volume in this room."""
+    url = f"{settings.orchestrator_protocol}://{settings.orchestrator_host}:{settings.orchestrator_port}/event/wakeword"
+    try:
+        requests.post(url, data={"room": settings.room}, timeout=3)
+        logger.debug(f"Triggered volume ducking for {settings.room}")
+    except Exception as e:
+        logger.error(f"Failed to trigger volume ducking: {e}")
+
+def notify_orchestrator_finished():
+    """Tells the orchestrator to restore the volume in this room."""
+    url = f"{settings.orchestrator_protocol}://{settings.orchestrator_host}:{settings.orchestrator_port}/event/finished"
+    try:
+        requests.post(url, data={"room": settings.room}, timeout=3)
+        logger.debug(f"Triggered volume restore for {settings.room}")
+    except Exception as e:
+        logger.error(f"Failed to trigger volume restore: {e}")
 
 # TODO: Weil ich hier jetzt schon preprocesse am besten einmal debugging der übertragenen audiodaten verbessern, also irgendwo speichern wenn ne config flag gesetzt wurde
 def record_until_silence(
@@ -312,7 +329,6 @@ def main():
             prediction = owwModel.predict(audio_np)
 
             if prediction[settings.wakeword_models] >= settings.wakeword_threshold:
-                print(time.time() - recent_speech_time)
                 is_speech_recent = (
                     time.time() - recent_speech_time
                 ) <= VAD_GATE_TIMEOUT
@@ -320,6 +336,7 @@ def main():
                     logger.info(
                         f"Wake Word Detected! (Confidence: {prediction[settings.wakeword_models]:.2f})"
                     )
+                    notify_orchestrator_wakeword()
                     play_local_wav(settings.wake_sound)
 
                     # --- COMMAND RECORDING LOOP ---
@@ -329,23 +346,44 @@ def main():
 
                     # --- PROCESSING ---
                     if len(audio_recorded) > 0:
-                        play_local_wav(settings.done_sound)
-                        response = orchestrator_client.send_audio_to_process(
-                            audio_recorded
-                        )
-                        if response:
-                            if response.status == "empty":
-                                logger.info("Empty transcript")
-                            elif response.status == "success":
-                                if response.actions:
-                                    handle_satellite_actions(response.actions)
-                                if response.audio_b64:
-                                    play_audio_from_b64(response.audio_b64)
+                        try:
+                            play_local_wav(settings.wake_sound)
 
+                            # --- COMMAND RECORDING LOOP ---
+                            audio_recorded = record_until_silence(
+                                mic_stream, silero_vad, silence_timeout=settings.silence_timeout
+                            )
+
+                            # --- PROCESSING ---
+                            if len(audio_recorded) > 0:
+                                play_local_wav(settings.done_sound)
+                                notify_orchestrator_finished()
+                                response = orchestrator_client.send_audio_to_process(
+                                    audio_recorded
+                                )
+                                if response:
+                                    if response.status == "empty":
+                                        logger.info("Empty transcript")
+                                    elif response.status == "success":
+                                        if response.actions:
+                                            notify_orchestrator_wakeword()
+                                            time.sleep(.1)
+                                            handle_satellite_actions(response.actions)
+                                        if response.audio_b64:
+                                            notify_orchestrator_wakeword()
+                                            time.sleep(.1)
+                                            # This blocks until TTS finishes playing
+                                            play_audio_from_b64(response.audio_b64)
+                        except Exception as e:
+                            logger.error(f"Error during interaction loop: {e}")
+                        finally:
+                            # 2. Restore Volume after everything is done (recording, processing, and TTS playback)
+                            notify_orchestrator_finished()
                     else:
                         logger.debug(
                             f"VAD Blocked False Positive (Confidence: {prediction[settings.wakeword_models]:.2f})"
                         )
+                        notify_orchestrator_finished()
                     # Reset models for the next interaction
                 owwModel.reset()
                 logger.info("Listening for wakeword...")
