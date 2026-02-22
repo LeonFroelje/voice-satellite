@@ -1,0 +1,20 @@
+# Git
+.git
+.gitignore
+
+# Nix artifacts
+result
+result-*
+
+# Python Virtual Environments
+.venv
+venv
+env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables (keep host secrets out of the image)
+.env

@@ -32,32 +32,27 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 1. Install runtime libs (ffmpeg, libportaudio2)
+# Install runtime libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libportaudio2 \
     alsa-utils \
     libasound2-plugins \
+    libpulse0 \
+    pulseaudio-utils \
     && rm -rf /var/lib/apt/lists/*
-RUN chmod -R a+rx /usr/share/alsa
-ENV ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf
-# 2. Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# 3. COPY the virtual environment
-# We copy it to the exact same path to prevent symlink breakage
-# Change ownership to appuser during the copy
-COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
-# 4. Copy application code
-COPY --chown=appuser:appuser . .
-RUN chown appuser:appuser /app
-RUN chmod 750 /app
-RUN chmod -R 755 /app/assets/sounds
-# 5. The Critical Fix: Explicit Command
-# instead of relying on ENV PATH, we point directly to the python binary
-# that contains your libraries.
-USER appuser
-RUN mkdir -p /app/assets/models
+# Copy VENV and App Code as root
+COPY --from=builder /opt/venv /opt/venv
 
-# USER root
+# Copy App Code
+COPY . /app
+
+# ONLY chmod the app directory, not the venv! This takes 0.1 seconds.
+RUN chmod -R 755 /app
+
+# Create models directory and make it writable by ANY user
+RUN mkdir -p /app/assets/models && chmod -R 777 /app/assets/models
+
+# DO NOT set 'USER' here. We want docker-compose to decide the user at runtime.
 CMD ["/opt/venv/bin/python", "main.py"]

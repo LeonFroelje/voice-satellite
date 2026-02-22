@@ -30,6 +30,7 @@ voice-satellite = "main:main"
 satellite-download-models = "download_models:main"
 # This creates a command to verify audio setup
 satellite-verify-audio = "verify_audio:main"
+satellite-silero-version = "test_silero:main"
 
 [tool.setuptools]
 # Explicitly list modules because of the flat layout
@@ -39,5 +40,6 @@ py-modules = [
     "stt_client",
     "verify_audio",
     "download_models",
-    "orchestrator_client"
+    "orchestrator_client",
+    "test_silero"
 ]

@@ -1,0 +1,9 @@
+FROM debian:bookworm-slim
+
+# Install the dedicated pulseaudio build of squeezelite
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    squeezelite-pulseaudio \
+    && rm -rf /var/lib/apt/lists/*
+
+# The binary is named differently and outputs to pulse by default
+ENTRYPOINT ["squeezelite-pulseaudio"]

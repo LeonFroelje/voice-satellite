@@ -150,7 +150,7 @@ def ensure_silero_vad_model():
     model_path = os.path.join(BASE_DIR, "assets", "models", "silero_vad.onnx")
     if not os.path.exists(model_path):
         logger.info("Downloading Silero VAD ONNX model (~1.8MB)...")
-        url = "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+        url = "https://github.com/snakers4/silero-vad/raw/v5.1.2/src/silero_vad/data/silero_vad.onnx"
         urllib.request.urlretrieve(url, model_path)
         logger.info("Downloaded silero_vad.onnx")
     return model_path
@@ -158,7 +158,6 @@ def ensure_silero_vad_model():
 
 class SileroVAD:
     def __init__(self, model_path):
-        # We limit threads to 1 since VAD is extremely lightweight and we want to save CPU
         options = ort.SessionOptions()
         options.inter_op_num_threads = 1
         options.intra_op_num_threads = 1
@@ -166,7 +165,7 @@ class SileroVAD:
         self.reset_states()
 
     def reset_states(self):
-        # Silero VAD ONNX requires a state tensor of shape (2, 1, 128)
+        # V5 requires a single state tensor of shape (2, batch_size, 128)
         self.state = np.zeros((2, 1, 128), dtype=np.float32)
 
     def process(self, audio_chunk_int16, sr=16000):
@@ -177,12 +176,14 @@ class SileroVAD:
         )
 
         ort_inputs = {
-            "input": np.expand_dims(audio_float32, axis=0),
-            "state": self.state,
-            "sr": np.array([sr], dtype=np.int64),
+            "input": np.expand_dims(audio_float32, axis=0),  # Shape: [1, chunk_size]
+            "state": self.state,  # Shape: [2, 1, 128]
+            "sr": np.array(sr, dtype=np.int64),  # Shape: [] (SCALAR, no brackets!)
         }
+
         ort_outs = self.session.run(None, ort_inputs)
         out, self.state = ort_outs
+
         return out[0][0]  # Returns speech probability (0.0 to 1.0)
 
 
@@ -198,6 +199,7 @@ def play_audio_from_b64(b64_string):
         logger.error(f"Failed to load base64 audio: {e}")
 
 
+# TODO: Weil ich hier jetzt schon preprocesse am besten einmal debugging der übertragenen audiodaten verbessern, also irgendwo speichern wenn ne config flag gesetzt wurde
 def record_until_silence(
     mic_stream, vad_model: SileroVAD, max_seconds=15, silence_timeout=3.0
 ):
@@ -215,6 +217,7 @@ def record_until_silence(
     has_spoken = False
 
     processed_frames = []
+    raw_debug_frames = []  # <-- Added for debugging
 
     # Ring buffer holds ~320ms of audio (10 chunks of 32ms) to catch word beginnings
     ring_buffer = collections.deque(maxlen=10)
@@ -222,8 +225,18 @@ def record_until_silence(
     # How long to keep recording AFTER speech stops before dropping frames
     hangover_time = 0.5
 
+    try:
+        available_frames = mic_stream.get_read_available()
+        if available_frames > 0:
+            mic_stream.read(available_frames, exception_on_overflow=False)
+            logger.debug(f"Flushed {available_frames} old frames from the mic buffer.")
+    except Exception as e:
+        logger.debug(f"Buffer flush exception: {e}")
+
     while (time.time() - start_time) < max_seconds:
         data = mic_stream.read(SILERO_CHUNK, exception_on_overflow=False)
+        raw_debug_frames.append(data)  # <-- Record raw data for the debug file
+
         speech_prob = vad_model.process(data, RATE)
         current_time = time.time()
 
@@ -240,7 +253,6 @@ def record_until_silence(
             processed_frames.append(data)
         else:
             # We are in silence. Keep a rolling window of audio just in case they start speaking again.
-            # These frames are dropped if the silence timeout is eventually reached.
             ring_buffer.append(data)
 
         # Stopping conditions
@@ -250,6 +262,28 @@ def record_until_silence(
         elif not has_spoken and (current_time - start_time) > 3.0:
             logger.debug("No initial speech detected within 3 seconds, aborting.")
             break
+
+    # --- DEBUG: Write the entire raw mic capture to a file ---
+    try:
+        # debug_filepath = os.path.join(os.path.dirname(__file__), "debug_raw_mic.wav")
+        debug_filepath = "./debug.wav"
+        with wave.open(debug_filepath, "wb") as wf:
+            wf.setnchannels(CHANNELS)
+            # PyAudio format paInt16 is 2 bytes wide
+            wf.setsampwidth(audio_manager.get_sample_size(FORMAT))
+            wf.setframerate(RATE)
+            wf.writeframes(b"".join(raw_debug_frames))
+        logger.info(f"Saved raw mic debug audio to {debug_filepath}")
+        debug_filepath = "./debug2.wav"
+        with wave.open(debug_filepath, "wb") as wf:
+            wf.setnchannels(CHANNELS)
+            # PyAudio format paInt16 is 2 bytes wide
+            wf.setsampwidth(audio_manager.get_sample_size(FORMAT))
+            wf.setframerate(RATE)
+            wf.writeframes(b"".join(processed_frames))
+        logger.info(f"Saved processed mic debug audio to {debug_filepath}")
+    except Exception as e:
+        logger.error(f"Failed to write debug wav: {e}")
 
     return b"".join(processed_frames)
 
@@ -277,7 +311,7 @@ def main():
     mic_stream = safe_open_stream()
     logger.info(f"Satellite started. Room: {settings.room}")
 
-    recent_speech_time = 0
+    recent_speech_time = time.time()
     VAD_GATE_TIMEOUT = (
         settings.silence_timeout
     )  # Ignore wakewords if no speech was heard in the last 1.5s
@@ -300,6 +334,7 @@ def main():
             prediction = owwModel.predict(audio_np)
 
             if prediction[settings.wakeword_models] >= settings.wakeword_threshold:
+                print(time.time() - recent_speech_time)
                 is_speech_recent = (
                     time.time() - recent_speech_time
                 ) <= VAD_GATE_TIMEOUT
