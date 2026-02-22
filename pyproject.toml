@@ -41,5 +41,8 @@ py-modules = [
     "verify_audio",
     "download_models",
     "orchestrator_client",
-    "test_silero"
+    "test_silero",
+    "audio_io",
+    "vad",
+    "communications"
 ]
