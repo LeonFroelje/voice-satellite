@@ -186,3 +186,7 @@ def main():
         asyncio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Satellite stopping...")
+
+
+if __name__ == "__main__":
+    main()

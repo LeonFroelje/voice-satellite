@@ -53,6 +53,6 @@ RUN chmod -R 755 /app
 
 # Create models directory and make it writable by ANY user
 RUN mkdir -p /app/assets/models && chmod -R 777 /app/assets/models
-
+RUN mkdir -p /app/cache && chmod -R 777 /app/cache
 # DO NOT set 'USER' here. We want docker-compose to decide the user at runtime.
 CMD ["/opt/venv/bin/python", "main.py"]

@@ -16,8 +16,6 @@ services:
       # Map your host's PipeWire/Pulse auth cookie
       - ~/.config/pulse/cookie:/tmp/pulse-cookie:ro
       - ./models:/app/assets/models
-      - ./debug.wav:/app/debug.wav
-      - ./debug2.wav:/app/debug2.wav
     network_mode: host
     # 3. Environment Variables
     environment:
@@ -27,12 +25,12 @@ services:
       # Tell pulse where to find the auth cookie
       - PULSE_COOKIE=/tmp/pulse-cookie
       # Pass through standard variables your Python app expects
-      - SAT_ORCHESTRATOR_HOST=192.168.40.15
-      - SAT_ORCHESTRATOR_PORT=8000
-      - SAT_ORCHESTRATOR_PROTOCOL=http
-      - WAKEWORD_THRESHOLD=0.7
-      - ROOM=Schlafzimmer
-      - LANGUAGE=de
+      - SAT_MQTT_HOST=192.168.40.45
+      - SAT_S3_ENDPOINT=http://192.168.40.15:3900
+      - SAT_S3_BUCKET=voice
+      - SAT_ROOM=Schlafzimmer
+      - SAT_LANGUAGE=de
+      - SAT_CACHE_DIR=/app/cache
 
     restart: unless-stopped
   squeezelite:
