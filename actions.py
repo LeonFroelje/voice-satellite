@@ -1,8 +1,8 @@
 import os
 import time
 import threading
+from storage_client import StorageClient
 import logging
-import requests
 import hashlib
 from config import settings
 
@@ -37,7 +37,9 @@ def download_and_cache_audio(url: str, storage_client) -> str:
     return ""
 
 
-def handle_satellite_actions(actions: list, audio_player):
+def handle_satellite_actions(
+    actions: list, audio_player, storage_client: StorageClient
+):
     """
     Executes local actions requested via MQTT payloads.
     Expects `actions` to be a list of dictionaries parsed from JSON.
@@ -68,7 +70,7 @@ def handle_satellite_actions(actions: list, audio_player):
             # This handles the TTS service's output
             audio_url = payload.get("audio_url")
             if audio_url:
-                local_file = download_and_cache_audio(audio_url)
+                local_file = download_and_cache_audio(audio_url, storage_client)
                 if local_file:
                     audio_player.play_local_wav(local_file)
 

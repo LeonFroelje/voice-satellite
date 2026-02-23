@@ -74,7 +74,9 @@ def audio_listening_loop(loop, mqtt_queue, audio_manager, audio_player):
             if confidence < settings.wakeword_threshold:
                 continue
 
-            if (time.time() - recent_speech_time) > WAKEWORD_VAD_GATE_TIMEOUT:
+            if (
+                time.time() - recent_speech_time
+            ) > WAKEWORD_VAD_GATE_TIMEOUT and settings.use_vad:
                 owwModel.reset()
                 logger.debug(
                     f"VAD Blocked False Positive (Confidence: {confidence:.2f})"
@@ -155,7 +157,7 @@ async def main_async():
         logger.info("Connected to MQTT broker.")
 
         # Subscribe to actions meant specifically for this voice's room
-        await client.subscribe(f"voice/{settings.room}/action")
+        await client.subscribe(f"satellite/{settings.room}/action")
 
         # Task 1: Listen for incoming MQTT messages (like executing actions)
         async def listen_mqtt():
@@ -163,10 +165,12 @@ async def main_async():
                 topic = message.topic.value
                 payload = json.loads(message.payload.decode())
 
+                logger.debug(topic, payload)
                 # Inside the async def listen_mqtt() loop:
                 if topic == f"satellite/{settings.room}/action":
                     actions = payload.get("actions", [])
                     # Pass storage_client here!
+                    logger.debug(actions)
                     handle_satellite_actions(actions, audio_player, storage_client)
 
         asyncio.create_task(listen_mqtt())

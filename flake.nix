@@ -159,35 +159,62 @@
         {
           options.services.voice-satellite = with lib; {
             enable = mkEnableOption "Voice Assistant Satellite";
+
             package = mkOption {
               type = types.package;
               default = defaultPkg;
               description = "The satellite package to use.";
             };
+
             environmentFile = mkOption {
               type = types.nullOr types.path;
               default = null;
-              description = "Path to an environment file for secrets (e.g., SAT_ORCHESTRATOR_TOKEN).";
+              description = ''
+                Path to an environment file for secrets.
+                To prevent leaks, this file should contain:
+                - SAT_S3_SECRET_KEY
+                - SAT_MQTT_PASSWORD (if your broker requires auth)
+              '';
             };
 
-            # --- Orchestrator Connection ---
-            orchestratorHost = mkOption {
+            # --- MQTT Connection ---
+            mqttHost = mkOption {
               type = types.str;
               default = "localhost";
-              description = "The Hostname or IP address of the orchestrator.";
+              description = "Mosquitto broker IP/Hostname";
             };
-            orchestratorPort = mkOption {
+            mqttPort = mkOption {
               type = types.int;
-              default = 8000;
-              description = "The port of the orchestrator API.";
+              default = 1883;
+              description = "Mosquitto broker port";
             };
-            orchestratorProtocol = mkOption {
-              type = types.enum [
-                "http"
-                "https"
-              ];
-              default = "http";
-              description = "Protocol to use for the orchestrator.";
+            mqttUser = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Username used to authenticate with MQTT broker";
+            };
+
+            # --- Object Storage (S3 Compatible) ---
+            s3Endpoint = mkOption {
+              type = types.str;
+              default = "http://localhost:3900";
+              description = "URL to Garage/SeaweedFS";
+            };
+            s3AccessKey = mkOption {
+              type = types.str;
+              default = "your-access-key";
+              description = "S3 Access Key";
+            };
+            s3Bucket = mkOption {
+              type = types.str;
+              default = "voice-commands";
+              description = "S3 Bucket Name";
+            };
+
+            cacheDir = mkOption {
+              type = types.str;
+              default = "/var/lib/voice-satellite";
+              description = "Path to cache directory";
             };
 
             # --- Audio Settings ---
@@ -215,6 +242,11 @@
               type = types.int;
               default = 1000;
               description = "The delay for TTS audio output stream in milliseconds.";
+            };
+            useVad = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Whether to use Voice Activity Detection (VAD).";
             };
             outputChannels = mkOption {
               type = types.int;
@@ -260,15 +292,18 @@
               default = null;
               description = "Path to WAV file for processing finished.";
             };
+
+            # --- Squeezelite Music Assistant ---
             configureSqueezelite = mkOption {
               type = types.bool;
-              default = false;
-              description = "Wether to install and configure squeezelite for music assistant";
+              default = true;
+              description = "Whether to install and configure squeezelite for music assistant";
             };
+
             musicAssistantIp = mkOption {
               type = types.str;
               default = "127.0.0.1";
-
+              description = "IP address of the Music Assistant server";
             };
           };
 
@@ -283,24 +318,22 @@
               # Crucial: Boots a background user session (and PipeWire) on startup
               linger = true;
             };
-            systemd.user.services.squeezelite = {
+
+            systemd.user.services.squeezelite = lib.mkIf cfg.configureSqueezelite {
               description = "Squeezelite Service (PulseAudio)";
-
-              # CRITICAL: User services must use default.target
               wantedBy = [ "default.target" ];
-
               unitConfig.ConditionUser = "satellite";
 
               serviceConfig = {
-                # -o pulse tells it to use PulseAudio (which is intercepted by PipeWire)
                 ExecStart = "${pkgs.squeezelite}/bin/squeezelite -n ${
                   if cfg.room != null then cfg.room else "Satellite"
                 } -s ${cfg.musicAssistantIp}";
 
                 Restart = "always";
-                RestartSec = "3s"; # %U is a systemd specifier that dynamically resolves to the UID of the 'satellite' user
+                RestartSec = "3s";
               };
             };
+
             services.pipewire = {
               enable = true;
               alsa.enable = true;
@@ -308,7 +341,9 @@
               pulse.enable = true;
               wireplumber.enable = true;
             };
+
             security.rtkit.enable = true;
+
             systemd.user.services.voice-satellite = {
               description = "Voice Assistant Satellite Service";
               wantedBy = [ "default.target" ];
@@ -317,33 +352,41 @@
                 "sound.target"
               ];
               unitConfig.ConditionUser = "satellite";
-              # unitConfig.ConditionUser = "satellite";
+
               serviceConfig = {
                 ExecStart = "${cfg.package}/bin/voice-satellite";
                 EnvironmentFile = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
-
-                # User = "satellite";
-                # SupplementaryGroups = [ "audio" ];
-
-                # Connect to PipeWire if configured, otherwise fall back to raw ALSA
 
                 Restart = "always";
                 RestartSec = "3s";
 
                 # Sandbox Settings
                 DynamicUser = false; # Must be false to use the static 'satellite' user
-                ProtectSystem = "strict"; # We can still use strict system protection!
+                ProtectSystem = "strict";
                 ProtectHome = "read-only";
                 PrivateTmp = true;
+
+                # If using /var/lib/voice-satellite, ensure it's readable/writable by the service
+                StateDirectory = "voice-satellite";
               };
 
               environment =
                 let
                   env = {
                     PYTHONUNBUFFERED = "1";
-                    SAT_ORCHESTRATOR_HOST = cfg.orchestratorHost;
-                    SAT_ORCHESTRATOR_PORT = toString cfg.orchestratorPort;
-                    SAT_ORCHESTRATOR_PROTOCOL = cfg.orchestratorProtocol;
+
+                    # Connection & S3
+                    SAT_MQTT_HOST = cfg.mqttHost;
+                    SAT_MQTT_PORT = toString cfg.mqttPort;
+                    SAT_MQTT_USER = cfg.mqttUser;
+
+                    SAT_S3_ENDPOINT = cfg.s3Endpoint;
+                    SAT_S3_ACCESS_KEY = cfg.s3AccessKey;
+                    SAT_S3_BUCKET = cfg.s3Bucket;
+
+                    SAT_CACHE_DIR = cfg.cacheDir;
+
+                    # Audio Settings
                     SAT_MIC_INDEX = if cfg.micIndex != null then toString cfg.micIndex else null;
                     SAT_SPEAKER_INDEX = if cfg.speakerIndex != null then toString cfg.speakerIndex else null;
                     SAT_WAKEWORD_THRESHOLD = toString cfg.wakewordThreshold;
@@ -351,6 +394,9 @@
                     SAT_OUTPUT_DELAY = toString cfg.outputDelay;
                     SAT_OUTPUT_CHANNELS = toString cfg.outputChannels;
                     SAT_SILENCE_TIMEOUT = toString cfg.silenceTimeout;
+                    SAT_USE_VAD = if cfg.useVad then "true" else "false";
+
+                    # Context, Language, System
                     SAT_ROOM = cfg.room;
                     SAT_LANGUAGE = cfg.language;
                     SAT_LOG_LEVEL = cfg.logLevel;
