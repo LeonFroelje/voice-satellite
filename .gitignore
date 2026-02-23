@@ -1,4 +1,5 @@
 .venv
+.env
 cache
 result
 __pycache__
