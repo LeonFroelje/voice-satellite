@@ -211,13 +211,9 @@
               description = "S3 Bucket Name";
             };
 
-            dataDir = mkOption {
-              type = types.str;
-              default = "/var/lib/voice-satellite";
-            };
             cacheDir = mkOption {
               type = types.str;
-              default = "${cfg.dataDir}/cache";
+              default = "/home/satellite/.cache/voice-satellite";
               description = "Path to cache directory";
             };
 
@@ -370,8 +366,7 @@
                 ProtectHome = "read-only";
                 PrivateTmp = true;
 
-                # If using /var/lib/voice-satellite, ensure it's readable/writable by the service
-                StateDirectory = cfg.dataDir;
+                CacheDirectory = "voice-satellite";
               };
 
               environment =
