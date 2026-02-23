@@ -28,18 +28,25 @@ class AudioPlayer:
             self._stop_event.set()  # Signal the thread to stop
             self._play_thread.join(timeout=2.0)  # Wait for thread to clean up
 
-    def play_local_wav(self, file_path, loop_duration=0):
+    def play_local_wav(self, file_path, loop_duration=0, blocking=False):
         if not file_path or not os.path.exists(file_path):
             return
         try:
-            self._play_normalized_audio(AudioSegment.from_wav(file_path), loop_duration)
+            self._play_normalized_audio(
+                AudioSegment.from_wav(file_path),
+                loop_duration=loop_duration,
+                blocking=blocking,
+            )
         except Exception as e:
             logger.error(f"Failed to load local sound {file_path}: {e}")
 
     def _play_normalized_audio(
-        self, audio_segment: AudioSegment, loop_duration: float = 0
+        self,
+        audio_segment: AudioSegment,
+        loop_duration: float = 0,
+        blocking: bool = False,
     ):
-        """Prepares audio and spawns a background thread for non-blocking playback."""
+        """Prepares audio and plays it either blockingly or in a background thread."""
         self.stop()
         self._stop_event.clear()
 
@@ -58,12 +65,18 @@ class AudioPlayer:
             ).set_channels(self.settings.output_channels)
             normalized_audio = silence + normalized_audio
 
-        self._play_thread = threading.Thread(
-            target=self._playback_worker,
-            args=(normalized_audio, loop_duration),
-            daemon=True,
-        )
-        self._play_thread.start()
+        if blocking:
+            # Run synchronously on the current thread.
+            # This pauses the calling code until the audio finishes playing.
+            self._playback_worker(normalized_audio, loop_duration)
+        else:
+            # Spawn a background thread for non-blocking playback (alarms, TTS)
+            self._play_thread = threading.Thread(
+                target=self._playback_worker,
+                args=(normalized_audio, loop_duration),
+                daemon=True,
+            )
+            self._play_thread.start()
 
     def _playback_worker(self, audio_segment: AudioSegment, loop_duration: float):
         """Runs in a background thread, pushing chunks and handling loops."""
