@@ -46,4 +46,4 @@ services:
       - ~/.config/pulse/cookie:/tmp/pulse-cookie:ro
     # Pass the arguments directly to the ENTRYPOINT
     # Change "Satellite" to your room name, and the IP to your Music Assistant server
-    command: ["-n", "Schlafzimmer", "-s", "192.168.40.46"]
+    command: ["-n", "Büro", "-s", "192.168.40.46"]

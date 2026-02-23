@@ -86,6 +86,7 @@ def audio_listening_loop(loop, mqtt_queue, audio_manager, audio_player):
             # ==========================================
             # --- WAKE WORD CONFIRMED! ---
             # ==========================================
+            audio_player.stop()
             logger.info(f"Wake Word Detected! (Confidence: {confidence:.2f})")
             audio_player.play_local_wav(settings.wake_sound)
 

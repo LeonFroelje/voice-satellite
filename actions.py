@@ -54,25 +54,19 @@ def handle_satellite_actions(
             logger.info(f"Setting local volume to {level}%")
             os.system(f"amixer set Master {level}%")
 
-        elif action_type == "start_timer":
-            duration = payload.get("duration_seconds", 0)
-            logger.info(f"Starting timer for {duration} seconds")
-
-            def timer_thread(seconds):
-                time.sleep(seconds)
-                logger.info("Timer complete!")
-                # Ensure you add 'timer_sound' to your config.py settings
-                audio_player.play_local_wav(settings.timer_sound)
-
-            threading.Thread(target=timer_thread, args=(duration,), daemon=True).start()
-
         elif action_type == "play_audio":
-            # This handles the TTS service's output
             audio_url = payload.get("audio_url")
+
+            # Check if we should loop this audio. If the payload doesn't explicitly
+            # specify a loop duration, but it's our timer sound, default to 30 seconds.
+            loop_duration = payload.get("loop_duration", 0)
             if audio_url:
                 local_file = download_and_cache_audio(audio_url, storage_client)
                 if local_file:
-                    audio_player.play_local_wav(local_file)
-
+                    # Pass the loop_duration to our updated method
+                    audio_player.play_local_wav(local_file, loop_duration=loop_duration)
+        elif action_type == "stop_audio":
+            logger.info("Received MQTT command to stop audio.")
+            audio_player.stop()
         else:
             logger.warning(f"Unknown action type received: {action_type}")
