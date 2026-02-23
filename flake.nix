@@ -366,7 +366,7 @@
                 ProtectSystem = "strict";
                 ProtectHome = "read-only";
                 PrivateTmp = true;
-
+                ReadWritePaths = [ "%t" ];
                 CacheDirectory = "voice-satellite";
               };
 
