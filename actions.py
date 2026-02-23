@@ -1,16 +1,45 @@
 import os
-import time
-import threading
 from storage_client import StorageClient
 import logging
 import hashlib
 from config import settings
+import pulsectl
 
 logger = logging.getLogger("Satellite.Actions")
 
 # Set up a local cache directory for TTS audio files
 CACHE_DIR = settings.cache_dir
 os.makedirs(CACHE_DIR, exist_ok=True)
+
+
+logger = logging.getLogger(__name__)
+
+
+def set_system_volume_pulsectl(level: int):
+    """Sets the system volume using the native pulsectl Python library."""
+    level = max(0, min(100, int(level)))
+    volume_float = level / 100.0  # PulseAudio API expects a float between 0.0 and 1.0
+
+    try:
+        # Connect to the PulseAudio socket
+        with pulsectl.Pulse("voice-satellite-volume") as pulse:
+            # Find the name of the default output device
+            default_sink_name = pulse.server_info().default_sink_name
+
+            # Find the actual sink object that matches the default name
+            default_sink = next(
+                (sink for sink in pulse.sink_list() if sink.name == default_sink_name),
+                None,
+            )
+
+            if default_sink:
+                pulse.volume_set_all_chans(default_sink, volume_float)
+                logger.info(f"System volume set to {level}% via pulsectl.")
+            else:
+                logger.error("Could not find the default audio sink.")
+
+    except Exception as e:
+        logger.error(f"PulseAudio connection failed: {e}")
 
 
 def download_and_cache_audio(url: str, storage_client) -> str:
@@ -52,7 +81,7 @@ def handle_satellite_actions(
         if action_type == "set_volume":
             level = payload.get("level", 50)
             logger.info(f"Setting local volume to {level}%")
-            os.system(f"amixer set Master {level}%")
+            set_system_volume_pulsectl(level)
 
         elif action_type == "play_audio":
             audio_url = payload.get("audio_url")

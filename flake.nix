@@ -96,6 +96,7 @@
         av
         pyaudio
         pydub
+        pulsectl
 
         # AI / Logic
         openwakeword
@@ -409,38 +410,44 @@
         };
 
       devShells.${system} = {
-        default =
-          (pkgs.buildFHSEnv {
-            name = "Python dev shell";
-            targetPkgs =
-              p: with p; [
-                fd
-                ripgrep
-                (nixvimModules.lib.mkNvim [ nixvimModules.nixosModules.python ])
-                # CHANGED: python314 -> python311 (or python312)
-                python311
-                python311Packages.pip
-                python311Packages.virtualenv # Recommended to create a venv inside the FHS
-                portaudio
-                pkg-config
-                zlib
-                glib
-                # We keep libraries here for runtime, but pip won't need to compile against them
-                # if it finds a wheel.
-                ffmpeg_7-headless
-                cargo
-                rustc
-                libgcc
-                # gccgo15 might be overkill/conflict, standard gcc is usually included in FHS
-              ];
-            runScript = ''
-              zsh
-              source .venv/bin/activate
-              set -o allexport
-              source .env 
-              set +o allexport
-            '';
-          }).env;
+        default = pkgs.mkShell {
+          name = "Voice satellite dev shell";
+          packages = with pkgs; [
+            (python313.withPackages (pypkgs: with pypkgs; satelliteDependencies))
+          ];
+          shellHook = "zsh";
+        };
+        # (pkgs.buildFHSEnv {
+        #   name = "Python dev shell";
+        #   targetPkgs =
+        #     p: with p; [
+        #       fd
+        #       ripgrep
+        #       (nixvimModules.lib.mkNvim [ nixvimModules.nixosModules.python ])
+        #       # CHANGED: python314 -> python311 (or python312)
+        #       python313
+        #       python313Packages.pip
+        #       python313Packages.virtualenv # Recommended to create a venv inside the FHS
+        #       portaudio
+        #       pkg-config
+        #       zlib
+        #       glib
+        #       # We keep libraries here for runtime, but pip won't need to compile against them
+        #       # if it finds a wheel.
+        #       ffmpeg_7-headless
+        #       cargo
+        #       rustc
+        #       libgcc
+        #       # gccgo15 might be overkill/conflict, standard gcc is usually included in FHS
+        #     ];
+        #   runScript = ''
+        #     zsh
+        #     source .venv/bin/activate
+        #     set -o allexport
+        #     source .env
+        #     set +o allexport
+        #   '';
+        # }).env;
         uv =
           (pkgs.buildFHSEnv {
             name = "uv-shell";
