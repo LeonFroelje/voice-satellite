@@ -8,20 +8,30 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class SatelliteSettings(BaseSettings):
-    # --- Orchestrator Connection ---
-    orchestrator_host: str = Field(
-        default="localhost",
-        description="The Hostname or ip address of the orchestrator",
+    # --- MQTT Connection ---
+    mqtt_host: str = Field(
+        default="localhost", description="Mosquitto broker IP/Hostname"
     )
-    orchestrator_port: int = Field(
-        default=8000, description="The port of the orchestrator api"
+    mqtt_port: int = Field(default=1883, description="Mosquitto broker port")
+    mqtt_user: Optional[str] = Field(
+        default=None, description="Username used to authenticate with mqtt broker"
     )
-    orchestrator_protocol: str = Field(default="http", description="http or https")
-    orchestrator_token: Optional[SecretStr] = Field(
-        default=None,
-        description="Bearer token for authenticating with the Orchestrator",
+    mqtt_password: Optional[str] = Field(
+        default=None, description="Password used to authenticate with mqtt broker"
     )
+    # Add mqtt_user / mqtt_password if your broker requires auth
 
+    # --- Object Storage (S3 Compatible) ---
+    s3_endpoint: str = Field(
+        default="http://localhost:3900", description="URL to Garage/SeaweedFS"
+    )
+    s3_access_key: str = Field(default="your-access-key")
+    s3_secret_key: SecretStr = Field(default="your-secret-key")
+    s3_bucket: str = Field(default="voice-commands")
+
+    cache_dir: str = Field(
+        default="/var/lib/voice-satellite", description="Path to cache directory"
+    )
     # --- Audio Settings ---
     mic_index: Optional[int] = Field(
         default=None,
@@ -79,10 +89,17 @@ def get_settings() -> SatelliteSettings:
     parser = argparse.ArgumentParser(description="Voice Assistant Satellite")
 
     # Add arguments for every field you want controllable via CLI
-    parser.add_argument("--orchestrator-host")
-    parser.add_argument("--orchestrator-protocol")
-    parser.add_argument("--orchestrator-port")
-    parser.add_argument("--orchestrator-token", help="API Token for Orchestrator")
+    parser.add_argument("--mqtt-host")
+    parser.add_argument("--mqtt-port")
+    parser.add_argument("--mqtt-user")
+    parser.add_argument("--mqtt-password")
+
+    parser.add_argument("--s3-endpoint")
+    parser.add_argument("--s3-access_key")
+    parser.add_argument("--s3-secret_key")
+    parser.add_argument("--s3-bucket")
+
+    parser.add_argument("--cache-dir")
 
     parser.add_argument("--mic-index", type=int, help="Microphone Device Index")
     parser.add_argument("--speaker-index", help="Index of output device")

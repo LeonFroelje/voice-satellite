@@ -47,16 +47,13 @@
         };
       };
       # OpenWakeWord is not in nixpkgs, so we package it here.
-      # Note: We stripped tflite-runtime as discussed.
       openwakeword = python.pkgs.buildPythonPackage rec {
         pname = "openwakeword";
         version = "0.6.0";
-        # format = "pyproject";
         pyproject = true;
 
         src = python.pkgs.fetchPypi {
           inherit pname version;
-          # 🔴 IMPORTANT: Run 'nix build', grab the hash from the error, and paste it here:
           hash = "sha256-NoWNkPEYPjB0hVl6kSpOPDOEsU6pkj+D/q/658FWVWU=";
         };
         postPatch = ''
@@ -67,7 +64,6 @@
         '';
 
         postInstall = ''
-          # Define the destination directory
           TARGET_DIR="$out/${python.sitePackages}/openwakeword/resources/models"
 
           echo "Installing models to: $TARGET_DIR"
@@ -97,16 +93,19 @@
       # --- Dependency List ---
       satelliteDependencies = with python.pkgs; [
         # Core Audio/Video
-        av # (PyAV) - Builds against ffmpeg automatically
-        pyaudio # Builds against portaudio automatically
-        pydub # Wrapper for ffmpeg
+        av
+        pyaudio
+        pydub
 
         # AI / Logic
-        openwakeword # Our custom package above
+        openwakeword
         onnxruntime
         numpy
         scipy
-        requests
+
+        # Network & Storage
+        boto3
+        aiomqtt
 
         # Utilities
         pydantic
@@ -132,7 +131,6 @@
           # We need to ensure 'ffmpeg' is in the PATH for pydub to find it
           nativeBuildInputs = [
             pkgs.makeWrapper
-            pkgs.alsa-utils
           ];
 
           postInstall = ''

@@ -15,34 +15,30 @@ dependencies = [
     "onnxruntime",       # Inference engine for openwakeword
     "numpy",
     "scipy",
-    "requests",
     "pydantic",
     "pydantic-settings",
     "python-dotenv",
-    "certifi",
-    "tqdm"
+    "tqdm",
+    "aiomqtt",           
+    "boto3"             
 ]
 
 [project.scripts]
-# This creates the 'voice-satellite' command
+# Main entry point
 voice-satellite = "main:main"
-# This creates a command to download models easily
+
 satellite-download-models = "download_models:main"
-# This creates a command to verify audio setup
-satellite-verify-audio = "verify_audio:main"
-satellite-silero-version = "test_silero:main"
+satellite-get-device-indices = "get_device_indices:main"
 
 [tool.setuptools]
 # Explicitly list modules because of the flat layout
 py-modules = [
     "main",
     "config",
-    "stt_client",
-    "verify_audio",
-    "download_models",
-    "orchestrator_client",
-    "test_silero",
     "audio_io",
     "vad",
-    "communications"
+    "actions",         
+    "storage_client",   
+    "download_models",
+    "get_device_indices" 
 ]
