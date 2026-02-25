@@ -42,24 +42,19 @@ def set_system_volume_pulsectl(level: int):
         logger.error(f"PulseAudio connection failed: {e}")
 
 
-def download_and_cache_audio(url: str, storage_client) -> str:
+def download_and_cache_audio(filename: str, storage_client) -> str:
     """
     Downloads audio from S3 via Boto3, caches it locally using an MD5 hash
     of the URL, and returns the local file path.
     """
-    url_hash = hashlib.md5(url.encode()).hexdigest()
-    file_path = os.path.join(CACHE_DIR, f"{url_hash}.wav")
+    file_path = os.path.join(CACHE_DIR, filename)
 
     # Return cached file if it already exists
     if os.path.exists(file_path):
         logger.debug(f"Audio found in local cache: {file_path}")
         return file_path
 
-    # Extract the S3 object key from the URL (e.g., "tts_abc123.wav")
-    object_key = url.split("/")[-1]
-
-    # Use our authenticated Boto3 client instead of requests
-    success = storage_client.download_file(object_key, file_path)
+    success = storage_client.download_file(filename, file_path)
 
     if success:
         return file_path
@@ -84,13 +79,13 @@ def handle_satellite_actions(
             set_system_volume_pulsectl(level)
 
         elif action_type == "play_audio":
-            audio_url = payload.get("audio_url")
+            filename = payload.get("filename")
 
             # Check if we should loop this audio. If the payload doesn't explicitly
             # specify a loop duration, but it's our timer sound, default to 30 seconds.
             loop_duration = payload.get("loop_duration", 0)
-            if audio_url:
-                local_file = download_and_cache_audio(audio_url, storage_client)
+            if filename:
+                local_file = download_and_cache_audio(filename, storage_client)
                 if local_file:
                     # Pass the loop_duration to our updated method
                     audio_player.play_local_wav(local_file, loop_duration=loop_duration)

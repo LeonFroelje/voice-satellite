@@ -109,15 +109,15 @@ def audio_listening_loop(loop, mqtt_queue, audio_manager, audio_player):
 
             if audio_recorded:
                 audio_player.play_local_wav(settings.done_sound)
-                audio_url = storage_client.upload_audio(audio_recorded)
+                filename = storage_client.upload_audio(audio_recorded)
 
-                if audio_url:
+                if filename:
                     # Send async event to trigger transcription service
                     loop.call_soon_threadsafe(
                         mqtt_queue.put_nowait,
                         {
                             "topic": "voice/audio/recorded",
-                            "payload": {"room": settings.room, "audio_url": audio_url},
+                            "payload": {"room": settings.room, "filename": filename},
                         },
                     )
 

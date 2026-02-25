@@ -36,15 +36,15 @@ class StorageClient:
         buffer.seek(0)
 
         # Generate a unique filename
-        filename = f"{uuid.uuid4().hex}.wav"
+        filename = f"sat_{settings.room}_{uuid.uuid4().hex}.wav"
 
         try:
             # Upload to S3 compatible storage
             self.s3.upload_fileobj(
                 buffer, self.bucket, filename, ExtraArgs={"ContentType": "audio/wav"}
             )
-            # Construct and return the URL
-            return f"{settings.s3_endpoint}/{self.bucket}/{filename}"
+            # Construct and return the filename
+            return f"{filename}"
         except Exception as e:
             logger.error(f"Failed to upload audio: {e}")
             return None
