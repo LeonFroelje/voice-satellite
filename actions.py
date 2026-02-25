@@ -81,9 +81,8 @@ def handle_satellite_actions(
         elif action_type == "play_audio":
             filename = payload.get("filename")
 
-            # Check if we should loop this audio. If the payload doesn't explicitly
-            # specify a loop duration, but it's our timer sound, default to 30 seconds.
             loop_duration = payload.get("loop_duration", 0)
+            logger.info(f"Playing sound {filename} for {loop_duration} seconds")
             if filename:
                 local_file = download_and_cache_audio(filename, storage_client)
                 if local_file:
